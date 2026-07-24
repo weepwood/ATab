@@ -6,6 +6,11 @@ import manifest from './manifest.config'
 
 export default defineConfig({
   plugins: [vue(), crx({ manifest })],
+  server: {
+    cors: {
+      origin: [/chrome-extension:\/\//],
+    },
+  },
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url)),
@@ -14,9 +19,7 @@ export default defineConfig({
   build: {
     rollupOptions: {
       input: {
-        newtab: fileURLToPath(new URL('./src/newtab/index.html', import.meta.url)),
         dashboard: fileURLToPath(new URL('./src/dashboard/index.html', import.meta.url)),
-        options: fileURLToPath(new URL('./src/options/index.html', import.meta.url)),
       },
     },
   },
