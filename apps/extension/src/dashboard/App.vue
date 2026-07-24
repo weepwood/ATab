@@ -6,6 +6,7 @@ import type { TabView } from '@/shared/domain'
 
 const store = useTabsStore()
 const aiCommand = ref('把 GitHub 页面整理到开发分组')
+const optionsUrl = chrome.runtime.getURL('src/options/index.html')
 
 onMounted(() => void store.refresh())
 
@@ -34,7 +35,7 @@ async function toggleMuted(tab: TabView): Promise<void> {
         <button disabled>书签</button>
         <button disabled>历史</button>
       </nav>
-      <a :href="chrome.runtime.getURL('src/options/index.html')">设置</a>
+      <a :href="optionsUrl">设置</a>
     </aside>
 
     <section class="content">
