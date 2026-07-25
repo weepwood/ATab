@@ -1,7 +1,44 @@
 import Dexie, { type EntityTable } from 'dexie'
+import type {
+  SyncEntitySnapshot,
+  SyncEntityType,
+  SyncOperation,
+} from '@atab/contracts/sync'
 import type { AiActionPlan, ResourceRecord, SessionRecord } from './domain'
 
 export interface SettingRecord {
+  key: string
+  value: unknown
+  updatedAt: string
+}
+
+export interface SyncOutboxRecord {
+  id: string
+  changeId: string
+  entityKey: string
+  entityType: SyncEntityType
+  entityId: string
+  baseVersion: number
+  operation: SyncOperation
+  payload: Record<string, unknown> | null
+  clientUpdatedAt: string
+  status: 'pending' | 'conflict'
+  attempts: number
+  lastError?: string
+  serverEntity?: SyncEntitySnapshot | null
+  createdAt: string
+  updatedAt: string
+}
+
+export interface SyncVersionRecord {
+  key: string
+  entityType: SyncEntityType
+  entityId: string
+  version: number
+  updatedAt: string
+}
+
+export interface SyncMetadataRecord {
   key: string
   value: unknown
   updatedAt: string
@@ -12,6 +49,9 @@ class ATabDatabase extends Dexie {
   sessions!: EntityTable<SessionRecord, 'id'>
   settings!: EntityTable<SettingRecord, 'key'>
   actionPlans!: EntityTable<AiActionPlan, 'id'>
+  syncOutbox!: EntityTable<SyncOutboxRecord, 'id'>
+  syncVersions!: EntityTable<SyncVersionRecord, 'key'>
+  syncMetadata!: EntityTable<SyncMetadataRecord, 'key'>
 
   constructor() {
     super('atab')
@@ -26,6 +66,15 @@ class ATabDatabase extends Dexie {
       sessions: 'id, kind, updatedAt',
       settings: 'key, updatedAt',
       actionPlans: 'id, createdAt, risk',
+    })
+    this.version(3).stores({
+      resources: 'id, canonicalUrl, domain, lastSeenAt',
+      sessions: 'id, kind, updatedAt',
+      settings: 'key, updatedAt',
+      actionPlans: 'id, createdAt, risk',
+      syncOutbox: 'id, entityKey, entityType, status, updatedAt',
+      syncVersions: 'key, entityType, entityId',
+      syncMetadata: 'key, updatedAt',
     })
   }
 }
