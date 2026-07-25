@@ -2,7 +2,7 @@
 
 ATab 是一个本地优先的 AI 浏览器工作台，用于统一管理标签页、标签组、书签、会话和网页知识。
 
-当前仓库正在建立浏览器数据底座、安全的 AI 操作协议和可替换模型服务，后续将继续接入云同步与语义检索。
+当前仓库正在建立浏览器数据底座、安全 AI 操作协议、可替换模型服务和增量云同步，后续将继续接入云收藏与语义检索。
 
 ## 产品目标
 
@@ -26,6 +26,10 @@ ATab 是一个本地优先的 AI 浏览器工作台，用于统一管理标签�
 - 扩展与 API 共用操作协议、运行时校验和操作白名单。
 - AI 计划风险预览、用户确认和执行前目标 URL 重校验。
 - 按具体 AI 服务来源申请可撤销的主机权限。
+- Supabase 邮箱密码登录、Token 刷新和退出。
+- 本地同步 Outbox、乐观版本号、幂等 changeId 和冲突队列。
+- PostgreSQL/Supabase 设备表、同步实体、顺序日志、RLS 与 RPC。
+- 手动会话跨设备推送、增量拉取和每 15 分钟后台同步。
 - URL 规范化和追踪参数清理。
 - Dexie/IndexedDB 本地数据库。
 - Chrome 109 核心路径兼容，不依赖 Side Panel API。
@@ -37,8 +41,9 @@ ATab 是一个本地优先的 AI 浏览器工作台，用于统一管理标签�
 - Vite、CRXJS、Manifest V3
 - Dexie / IndexedDB
 - Fastify
+- PostgreSQL / Supabase Auth / RLS
 - Vitest
-- 后续：PostgreSQL、pgvector、Supabase Auth/Realtime/Storage
+- 后续：pgvector、Supabase Realtime/Storage
 
 ## 本地开发
 
@@ -54,7 +59,7 @@ pnpm install
 pnpm dev:extension
 ```
 
-启动本地 Mock AI API：
+启动本地 Mock AI API 和同步网关：
 
 ```bash
 pnpm dev:api
@@ -76,6 +81,7 @@ pnpm build
 - [数据模型](docs/data-model.md)
 - [AI 安全与执行协议](docs/ai-security.md)
 - [AI Provider 与部署](docs/ai-provider.md)
+- [增量云同步](docs/cloud-sync.md)
 - [实施路线图](docs/roadmap.md)
 - [AI 协作指南](AGENTS.md)
 
