@@ -60,6 +60,6 @@ describe('书签树工具', () => {
 
   it('补全网址协议并拒绝危险协议', () => {
     expect(normalizeBookmarkUrl('example.com')).toBe('https://example.com/')
-    expect(() => normalizeBookmarkUrl('javascript:alert(1)')).toThrow('仅支持 HTTP 或 HTTPS网址')
+    expect(() => normalizeBookmarkUrl('javascript:alert(1)')).toThrow('仅支持 HTTP 或 HTTPS 网址')
   })
 })
