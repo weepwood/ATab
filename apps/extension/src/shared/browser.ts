@@ -37,7 +37,7 @@ function toBookmarkNode(node: chrome.bookmarks.BookmarkTreeNode): BookmarkNodeVi
   }
 }
 
-function toSessionWindowState(state: chrome.windows.WindowState | undefined): SessionWindowState {
+function toSessionWindowState(state: string | undefined): SessionWindowState {
   if (state === 'minimized' || state === 'maximized' || state === 'fullscreen' || state === 'locked') {
     return state
   }
