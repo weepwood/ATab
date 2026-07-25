@@ -1,0 +1,25 @@
+{
+  "name": "@atab/api",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "build": "tsc --noEmit -p tsconfig.json && tsup src/server.ts --format esm --dts --clean",
+    "start": "node dist/server.js",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@atab/contracts": "workspace:*",
+    "@fastify/cors": "^11.0.1",
+    "fastify": "^5.10.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.4",
+    "tsx": "^4.19.3",
+    "tsup": "^8.3.6",
+    "typescript": "^5.7.3",
+    "vitest": "^3.0.7"
+  }
+}
