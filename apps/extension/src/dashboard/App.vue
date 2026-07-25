@@ -3,8 +3,9 @@ import { ref } from 'vue'
 import TabsView from './TabsView.vue'
 import SessionsView from './SessionsView.vue'
 import BookmarksView from './BookmarksView.vue'
+import SyncView from './SyncView.vue'
 
-type WorkspaceView = 'tabs' | 'sessions' | 'bookmarks'
+type WorkspaceView = 'tabs' | 'sessions' | 'bookmarks' | 'sync'
 
 const activeView = ref<WorkspaceView>('tabs')
 const optionsUrl = chrome.runtime.getURL('src/options/index.html')
@@ -18,6 +19,7 @@ const optionsUrl = chrome.runtime.getURL('src/options/index.html')
         <button :class="{ active: activeView === 'tabs' }" @click="activeView = 'tabs'">标签页</button>
         <button :class="{ active: activeView === 'sessions' }" @click="activeView = 'sessions'">会话</button>
         <button :class="{ active: activeView === 'bookmarks' }" @click="activeView = 'bookmarks'">书签</button>
+        <button :class="{ active: activeView === 'sync' }" @click="activeView = 'sync'">同步</button>
         <button disabled>历史</button>
       </nav>
       <a :href="optionsUrl">设置</a>
@@ -25,7 +27,8 @@ const optionsUrl = chrome.runtime.getURL('src/options/index.html')
 
     <TabsView v-if="activeView === 'tabs'" />
     <SessionsView v-else-if="activeView === 'sessions'" />
-    <BookmarksView v-else />
+    <BookmarksView v-else-if="activeView === 'bookmarks'" />
+    <SyncView v-else />
   </main>
 </template>
 
