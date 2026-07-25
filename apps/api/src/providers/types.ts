@@ -1,6 +1,6 @@
-import type { AgentPlanDraft, AgentPlanRequest } from '@atab/contracts'
+import type { AgentPlanRequest } from '@atab/contracts'
 
 export interface AgentProvider {
   readonly name: string
-  generatePlan(request: AgentPlanRequest): Promise<AgentPlanDraft>
+  generatePlan(request: AgentPlanRequest): Promise<unknown>
 }
