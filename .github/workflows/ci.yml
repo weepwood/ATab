@@ -15,6 +15,20 @@ jobs:
         with:
           node-version: 22
       - run: pnpm install --no-frozen-lockfile
-      - run: pnpm typecheck
+      - name: Typecheck
+        id: typecheck
+        continue-on-error: true
+        run: pnpm typecheck > typecheck.log 2>&1
+      - name: Upload typecheck diagnostics
+        if: steps.typecheck.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: typecheck-log
+          path: typecheck.log
+      - name: Report typecheck failure
+        if: steps.typecheck.outcome == 'failure'
+        run: |
+          cat typecheck.log
+          exit 1
       - run: pnpm test
       - run: pnpm build
