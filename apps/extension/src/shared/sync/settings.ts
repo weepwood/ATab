@@ -48,14 +48,18 @@ export async function getSyncSettings(): Promise<SyncSettings> {
 export async function saveSyncSettings(settings: SyncSettings): Promise<void> {
   const normalized: SyncSettings = {
     enabled: settings.enabled,
-    apiEndpoint: normalizeHttpEndpoint(settings.apiEndpoint, '同步 API 地址'),
-    supabaseUrl: normalizeHttpEndpoint(settings.supabaseUrl, 'Supabase 地址'),
+    apiEndpoint: settings.enabled
+      ? normalizeHttpEndpoint(settings.apiEndpoint, '同步 API 地址')
+      : settings.apiEndpoint.trim() || DEFAULT_API_ENDPOINT,
+    supabaseUrl: settings.enabled
+      ? normalizeHttpEndpoint(settings.supabaseUrl, 'Supabase 地址')
+      : settings.supabaseUrl.trim(),
     supabaseAnonKey: settings.supabaseAnonKey.trim(),
     deviceId: settings.deviceId,
     deviceName: settings.deviceName.trim(),
     platform: settings.platform.trim() || readPlatform(),
   }
-  if (!normalized.supabaseAnonKey) throw new Error('请输入 Supabase anon key')
+  if (normalized.enabled && !normalized.supabaseAnonKey) throw new Error('请输入 Supabase anon key')
   if (!normalized.deviceName) throw new Error('设备名称不能为空')
   await chrome.storage.local.set({ syncSettings: normalized })
 }
@@ -116,7 +120,10 @@ function defaultDeviceName(): string {
 }
 
 function readPlatform(): string {
-  const platform = navigator.userAgentData?.platform || navigator.platform || 'browser'
+  const navigatorWithUa = navigator as Navigator & {
+    userAgentData?: { platform?: string }
+  }
+  const platform = navigatorWithUa.userAgentData?.platform || navigator.platform || 'browser'
   return platform.toLowerCase().slice(0, 60)
 }
 
