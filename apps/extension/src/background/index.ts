@@ -1,4 +1,7 @@
+import { createAutoSnapshot } from '@/shared/sessionService'
+
 const dashboardUrl = chrome.runtime.getURL('src/dashboard/index.html')
+const AUTO_SNAPSHOT_ALARM = 'atab-auto-session-snapshot'
 
 async function openDashboard(): Promise<void> {
   const existing = await chrome.tabs.query({ url: dashboardUrl })
@@ -8,6 +11,13 @@ async function openDashboard(): Promise<void> {
     return
   }
   await chrome.tabs.create({ url: dashboardUrl })
+}
+
+function ensureAutoSnapshotAlarm(): void {
+  chrome.alarms.create(AUTO_SNAPSHOT_ALARM, {
+    delayInMinutes: 1,
+    periodInMinutes: 30,
+  })
 }
 
 chrome.action.onClicked.addListener(() => {
@@ -27,4 +37,14 @@ chrome.runtime.onInstalled.addListener(() => {
       allowAiPageReading: false,
     },
   })
+  ensureAutoSnapshotAlarm()
+  void createAutoSnapshot()
+})
+
+chrome.runtime.onStartup.addListener(() => {
+  ensureAutoSnapshotAlarm()
+})
+
+chrome.alarms.onAlarm.addListener((alarm) => {
+  if (alarm.name === AUTO_SNAPSHOT_ALARM) void createAutoSnapshot()
 })
