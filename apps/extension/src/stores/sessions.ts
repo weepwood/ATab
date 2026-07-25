@@ -3,7 +3,12 @@ import { defineStore } from 'pinia'
 import { browserGateway } from '@/shared/browser'
 import { db } from '@/shared/db'
 import type { SessionRecord, SessionRestoreResult } from '@/shared/domain'
-import { captureAndSaveSession, saveImportedSession } from '@/shared/sessionService'
+import {
+  captureAndSaveSession,
+  deleteSessionRecord,
+  saveImportedSession,
+  updateSessionRecord,
+} from '@/shared/sessionService'
 import { parseSessionImport } from '@/shared/sessions'
 
 export const useSessionsStore = defineStore('sessions', () => {
@@ -66,7 +71,7 @@ export const useSessionsStore = defineStore('sessions', () => {
     const normalizedName = name.trim()
     if (!normalizedName) throw new Error('会话名称不能为空')
     await runMutation(async () => {
-      await db.sessions.put({
+      await updateSessionRecord({
         ...session,
         name: normalizedName,
         updatedAt: new Date().toISOString(),
@@ -75,7 +80,7 @@ export const useSessionsStore = defineStore('sessions', () => {
   }
 
   async function remove(session: SessionRecord): Promise<void> {
-    await runMutation(() => db.sessions.delete(session.id))
+    await runMutation(() => deleteSessionRecord(session))
   }
 
   async function importFromJson(text: string): Promise<void> {
