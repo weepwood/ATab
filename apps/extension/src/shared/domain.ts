@@ -22,6 +22,49 @@ export interface BookmarkNodeView {
   children: BookmarkNodeView[]
 }
 
+export type TabGroupColor = 'grey' | 'blue' | 'red' | 'yellow' | 'green' | 'pink' | 'purple' | 'cyan' | 'orange'
+
+export interface SessionGroupSnapshot {
+  key: string
+  title?: string
+  color: TabGroupColor
+  collapsed: boolean
+}
+
+export interface SessionTabSnapshot {
+  title: string
+  url: string
+  pinned: boolean
+  index: number
+  groupKey?: string
+}
+
+export type SessionWindowState = 'normal' | 'minimized' | 'maximized' | 'fullscreen' | 'locked'
+
+export interface SessionWindowSnapshot {
+  key: string
+  focused: boolean
+  state: SessionWindowState
+  groups: SessionGroupSnapshot[]
+  tabs: SessionTabSnapshot[]
+}
+
+export interface SessionRecord {
+  id: string
+  name: string
+  kind: 'manual' | 'auto'
+  createdAt: string
+  updatedAt: string
+  tabCount: number
+  windows: SessionWindowSnapshot[]
+}
+
+export interface SessionRestoreResult {
+  restoredTabs: number
+  skippedTabs: number
+  createdWindows: number
+}
+
 export interface ResourceRecord {
   id: string
   originalUrl: string
@@ -33,16 +76,8 @@ export interface ResourceRecord {
   lastSeenAt: string
 }
 
-export interface SessionRecord {
-  id: string
-  name: string
-  createdAt: string
-  updatedAt: string
-  tabs: Array<Pick<TabView, 'title' | 'url' | 'pinned'>>
-}
-
 export type AiOperation =
-  | { type: 'CREATE_GROUP'; tabIds: number[]; name: string; color: 'grey' | 'blue' | 'red' | 'yellow' | 'green' | 'pink' | 'purple' | 'cyan' | 'orange' }
+  | { type: 'CREATE_GROUP'; tabIds: number[]; name: string; color: TabGroupColor }
   | { type: 'CLOSE_TABS'; tabIds: number[] }
   | { type: 'MUTE_TABS'; tabIds: number[] }
 
