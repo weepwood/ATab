@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import TabsView from './TabsView.vue'
+import SessionsView from './SessionsView.vue'
 import BookmarksView from './BookmarksView.vue'
 
-type WorkspaceView = 'tabs' | 'bookmarks'
+type WorkspaceView = 'tabs' | 'sessions' | 'bookmarks'
 
 const activeView = ref<WorkspaceView>('tabs')
 const optionsUrl = chrome.runtime.getURL('src/options/index.html')
@@ -15,7 +16,7 @@ const optionsUrl = chrome.runtime.getURL('src/options/index.html')
       <div class="brand">A</div>
       <nav>
         <button :class="{ active: activeView === 'tabs' }" @click="activeView = 'tabs'">标签页</button>
-        <button disabled>会话</button>
+        <button :class="{ active: activeView === 'sessions' }" @click="activeView = 'sessions'">会话</button>
         <button :class="{ active: activeView === 'bookmarks' }" @click="activeView = 'bookmarks'">书签</button>
         <button disabled>历史</button>
       </nav>
@@ -23,6 +24,7 @@ const optionsUrl = chrome.runtime.getURL('src/options/index.html')
     </aside>
 
     <TabsView v-if="activeView === 'tabs'" />
+    <SessionsView v-else-if="activeView === 'sessions'" />
     <BookmarksView v-else />
   </main>
 </template>
