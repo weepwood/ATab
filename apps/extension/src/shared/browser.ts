@@ -74,7 +74,7 @@ export const browserGateway = {
     title: string
     url?: string
   }): Promise<void> {
-    const changes: chrome.bookmarks.BookmarkChangesArg = { title: input.title }
+    const changes: chrome.bookmarks.UpdateChanges = { title: input.title }
     if (input.url) changes.url = input.url
     await chrome.bookmarks.update(input.id, changes)
   },
