@@ -7,6 +7,8 @@ export interface ApiConfig {
   model?: string
   requestTimeoutMs: number
   allowedOrigins: string[]
+  supabaseUrl?: string
+  supabaseAnonKey?: string
   host: string
   port: number
 }
@@ -26,6 +28,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ApiConfig {
       .split(',')
       .map((origin) => origin.trim().replace(/\/$/, ''))
       .filter(Boolean),
+    supabaseUrl: env.SUPABASE_URL?.trim().replace(/\/$/, '') || undefined,
+    supabaseAnonKey: env.SUPABASE_ANON_KEY?.trim() || undefined,
     host: env.HOST?.trim() || '127.0.0.1',
     port: readPort(env.PORT, 8_787),
   }
