@@ -2,7 +2,7 @@
 
 ATab 是一个本地优先的 AI 浏览器工作台，用于统一管理标签页、标签组、书签、会话和网页知识。
 
-当前仓库处于第一阶段：先完成浏览器数据底座和安全的 AI 操作协议，再逐步接入云同步、语义检索和模型服务。
+当前仓库正在建立浏览器数据底座、安全的 AI 操作协议和可替换模型服务，后续将继续接入云同步与语义检索。
 
 ## 产品目标
 
@@ -19,10 +19,16 @@ ATab 是一个本地优先的 AI 浏览器工作台，用于统一管理标签�
 - 新标签页、标签页工作台和设置页。
 - 标签页读取、切换、关闭、固定、静音和创建标签组。
 - 标签页搜索、按域名聚合和批量选择。
-- 本地规则版 AI 计划器，用于验证“计划 → 预览 → 确认 → 执行”链路。
+- Chrome/Edge 原生书签树、搜索、创建、编辑、移动和安全删除。
+- 浏览会话保存、恢复、自动快照以及 JSON 导入导出。
+- 本地 Mock AI Provider 与独立 Fastify AI API。
+- 兼容严格 JSON Schema 输出的远程模型 Provider。
+- 扩展与 API 共用操作协议、运行时校验和操作白名单。
+- AI 计划风险预览、用户确认和执行前目标 URL 重校验。
+- 按具体 AI 服务来源申请可撤销的主机权限。
 - URL 规范化和追踪参数清理。
-- Dexie/IndexedDB 数据库骨架。
-- Chrome 109 降级兼容思路：不依赖 Side Panel API。
+- Dexie/IndexedDB 本地数据库。
+- Chrome 109 核心路径兼容，不依赖 Side Panel API。
 - CI：类型检查、测试和构建。
 
 ## 技术栈
@@ -30,19 +36,35 @@ ATab 是一个本地优先的 AI 浏览器工作台，用于统一管理标签�
 - Vue 3、TypeScript、Pinia
 - Vite、CRXJS、Manifest V3
 - Dexie / IndexedDB
+- Fastify
 - Vitest
-- 后续：Fastify、PostgreSQL、pgvector、Supabase Auth/Realtime/Storage
+- 后续：PostgreSQL、pgvector、Supabase Auth/Realtime/Storage
 
 ## 本地开发
 
+安装依赖：
+
 ```bash
 pnpm install
-pnpm dev
 ```
 
-生产构建：
+启动扩展开发环境：
 
 ```bash
+pnpm dev:extension
+```
+
+启动本地 Mock AI API：
+
+```bash
+pnpm dev:api
+```
+
+完整验证：
+
+```bash
+pnpm typecheck
+pnpm test
 pnpm build
 ```
 
@@ -53,6 +75,7 @@ pnpm build
 - [总体架构](docs/architecture.md)
 - [数据模型](docs/data-model.md)
 - [AI 安全与执行协议](docs/ai-security.md)
+- [AI Provider 与部署](docs/ai-provider.md)
 - [实施路线图](docs/roadmap.md)
 - [AI 协作指南](AGENTS.md)
 
