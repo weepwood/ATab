@@ -6,16 +6,20 @@ import {
 } from '@atab/contracts'
 import { loadConfig, type ApiConfig } from './config'
 import { createAgentProvider, type AgentProvider } from './providers'
+import { SupabaseSyncGateway, type SyncGateway } from './sync/gateway'
+import { registerSyncRoutes } from './sync/routes'
 
 export interface BuildAppOptions {
   config?: ApiConfig
   provider?: AgentProvider
+  syncGateway?: SyncGateway
   logger?: boolean
 }
 
 export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyInstance> {
   const config = options.config ?? loadConfig()
   const provider = options.provider ?? createAgentProvider(config)
+  const syncGateway = options.syncGateway ?? new SupabaseSyncGateway(config)
   const app = Fastify({
     logger: options.logger ?? false,
     bodyLimit: 1_048_576,
@@ -32,6 +36,7 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
   app.get('/health', async () => ({
     status: 'ok',
     provider: provider.name,
+    syncConfigured: syncGateway.configured,
   }))
 
   app.post('/v1/agent/plan', async (request, reply) => {
@@ -68,6 +73,7 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
     }
   })
 
+  await registerSyncRoutes(app, syncGateway)
   return app
 }
 
