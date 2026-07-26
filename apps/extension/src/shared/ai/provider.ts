@@ -55,11 +55,15 @@ export async function createAiPlan(command: string, tabs: TabView[]): Promise<Ai
 }
 
 export async function requestAiEndpointPermission(endpoint: string): Promise<boolean> {
-  return chrome.permissions.request({ origins: [endpointPermissionPattern(endpoint)] })
+  return chrome.permissions.request({ origins: [aiEndpointPermissionPattern(endpoint)] })
 }
 
 export async function hasAiEndpointPermission(endpoint: string): Promise<boolean> {
-  return chrome.permissions.contains({ origins: [endpointPermissionPattern(endpoint)] })
+  return chrome.permissions.contains({ origins: [aiEndpointPermissionPattern(endpoint)] })
+}
+
+export async function removeAiEndpointPermission(endpoint: string): Promise<boolean> {
+  return chrome.permissions.remove({ origins: [aiEndpointPermissionPattern(endpoint)] })
 }
 
 export async function testAiEndpoint(endpoint: string): Promise<AiHealthResult> {
@@ -179,7 +183,7 @@ export function normalizeEndpoint(value: string): string {
   return url.toString().replace(/\/$/, '')
 }
 
-function endpointPermissionPattern(endpoint: string): string {
+export function aiEndpointPermissionPattern(endpoint: string): string {
   const url = new URL(normalizeEndpoint(endpoint))
   return `${url.origin}/*`
 }
