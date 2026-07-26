@@ -4,6 +4,11 @@ import { browserGateway } from '@/shared/browser'
 import { db } from '@/shared/db'
 import { hasHistoryPermission, searchBrowserHistory } from '@/shared/history'
 import {
+  getSemanticSearchEnabled,
+  searchSemanticResources,
+  setSemanticSearchEnabled,
+} from '@/shared/semanticSearch'
+import {
   createBookmarkSearchDocuments,
   createCloudBookmarkSearchDocuments,
   createHistorySearchDocuments,
@@ -25,7 +30,12 @@ export const useUnifiedSearchStore = defineStore('unified-search', () => {
   const error = ref('')
   const historyAvailable = ref(false)
   const selectedIndex = ref(0)
+  const semanticEnabled = ref(false)
+  const semanticLoading = ref(false)
+  const semanticError = ref('')
+  const semanticMatchCount = ref(0)
   let searchGeneration = 0
+  let semanticGeneration = 0
 
   const selectedResult = computed(() => results.value[selectedIndex.value] ?? null)
   const sourceCounts = computed(() => {
@@ -36,9 +46,33 @@ export const useUnifiedSearchStore = defineStore('unified-search', () => {
     return counts
   })
 
+  async function loadSemanticSettings(): Promise<void> {
+    semanticEnabled.value = await getSemanticSearchEnabled()
+  }
+
+  async function enableSemanticSearch(): Promise<void> {
+    await setSemanticSearchEnabled(true)
+    semanticEnabled.value = true
+    semanticError.value = ''
+  }
+
+  async function disableSemanticSearch(): Promise<void> {
+    semanticGeneration += 1
+    await setSemanticSearchEnabled(false)
+    semanticEnabled.value = false
+    semanticLoading.value = false
+    semanticError.value = ''
+    semanticMatchCount.value = 0
+  }
+
   async function search(): Promise<void> {
     const normalizedQuery = query.value.trim()
     const generation = ++searchGeneration
+    semanticGeneration += 1
+    semanticLoading.value = false
+    semanticError.value = ''
+    semanticMatchCount.value = 0
+
     if (!normalizedQuery) {
       results.value = []
       selectedIndex.value = 0
@@ -92,6 +126,55 @@ export const useUnifiedSearchStore = defineStore('unified-search', () => {
       }
     } finally {
       if (generation === searchGeneration) loading.value = false
+    }
+  }
+
+  async function runSemanticSearch(): Promise<void> {
+    const normalizedQuery = query.value.normalize('NFKC').replace(/\s+/g, ' ').trim()
+    if (!semanticEnabled.value) throw new Error('语义搜索尚未启用')
+    if (!selectedSources.value.includes('resource')) {
+      throw new Error('请先启用“网页资料”搜索来源')
+    }
+    if (normalizedQuery.length < 2) throw new Error('语义查询至少需要 2 个字符')
+
+    const generation = ++semanticGeneration
+    semanticLoading.value = true
+    semanticError.value = ''
+    semanticMatchCount.value = 0
+    try {
+      const matches = await searchSemanticResources(normalizedQuery)
+      if (generation !== semanticGeneration || query.value.trim() !== normalizedQuery) return
+
+      const [resources, contents] = await Promise.all([
+        db.resources.toArray(),
+        db.resourceContents.toArray(),
+      ])
+      const documentsByResourceId = new Map(
+        createResourceSearchDocuments(resources, contents)
+          .map((document) => [document.targetId, document]),
+      )
+      const semanticResults = matches.flatMap((match): UnifiedSearchResult[] => {
+        const document = documentsByResourceId.get(match.resource.id)
+        if (!document) return []
+        const percentage = Math.max(0, Math.min(100, Math.round(match.similarity * 100)))
+        return [{
+          ...document,
+          subtitle: `语义相似度 ${percentage}% · ${document.subtitle}`,
+          score: 70 + percentage,
+          matchedFields: ['body'],
+        }]
+      })
+
+      results.value = mergeSemanticResults(results.value, semanticResults)
+      semanticMatchCount.value = semanticResults.length
+      selectedIndex.value = results.value.length > 0 ? 0 : -1
+    } catch (cause) {
+      if (generation === semanticGeneration) {
+        semanticError.value = cause instanceof Error ? cause.message : '语义搜索失败'
+      }
+      throw cause
+    } finally {
+      if (generation === semanticGeneration) semanticLoading.value = false
     }
   }
 
@@ -153,10 +236,47 @@ export const useUnifiedSearchStore = defineStore('unified-search', () => {
     selectedIndex,
     selectedResult,
     sourceCounts,
+    semanticEnabled,
+    semanticLoading,
+    semanticError,
+    semanticMatchCount,
+    loadSemanticSettings,
+    enableSemanticSearch,
+    disableSemanticSearch,
     search,
+    runSemanticSearch,
     toggleSource,
     moveSelection,
     select,
     execute,
   }
 })
+
+function mergeSemanticResults(
+  keywordResults: UnifiedSearchResult[],
+  semanticResults: UnifiedSearchResult[],
+): UnifiedSearchResult[] {
+  const merged = new Map(keywordResults.map((result) => [result.id, result]))
+
+  for (const semantic of semanticResults) {
+    const existing = merged.get(semantic.id)
+    if (!existing) {
+      merged.set(semantic.id, semantic)
+      continue
+    }
+    const matchedFields = [...new Set([
+      ...existing.matchedFields,
+      ...semantic.matchedFields,
+    ])]
+    merged.set(semantic.id, {
+      ...existing,
+      subtitle: semantic.subtitle,
+      score: Math.max(existing.score, semantic.score) + 20,
+      matchedFields,
+    })
+  }
+
+  return [...merged.values()]
+    .sort((a, b) => b.score - a.score || (b.updatedAt ?? 0) - (a.updatedAt ?? 0))
+    .slice(0, 120)
+}
