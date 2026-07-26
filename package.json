@@ -7,8 +7,10 @@
     "dev": "pnpm --filter @atab/extension dev",
     "dev:extension": "pnpm --filter @atab/extension dev",
     "dev:api": "pnpm --filter @atab/api dev",
+    "doctor": "node scripts/doctor.mjs",
+    "doctor:active": "node scripts/doctor.mjs --active",
     "build": "pnpm -r build",
     "typecheck": "pnpm -r typecheck",
-    "test": "pnpm -r test"
+    "test": "pnpm -r test && node --test scripts/*.test.mjs"
   }
 }
