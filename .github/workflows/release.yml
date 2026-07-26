@@ -58,15 +58,29 @@ jobs:
           ATAB_EXTENSION_DIR: ${{ github.workspace }}/apps/extension/dist
         run: xvfb-run -a pnpm --filter @atab/e2e smoke
 
-      - name: Create GitHub Release
+      - name: Create or update GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "${GITHUB_REF_NAME}" \
-            artifacts/atab-extension-*.zip \
-            --verify-tag \
-            --generate-notes \
-            --title "ATab ${GITHUB_REF_NAME}"
+          set -euo pipefail
+          shopt -s nullglob
+          assets=(
+            artifacts/atab-extension-*.zip
+            artifacts/atab-extension-*.zip.sha256
+          )
+          if (( ${#assets[@]} != 2 )); then
+            printf '预期 2 个发布附件，实际找到 %s 个\n' "${#assets[@]}" >&2
+            exit 1
+          fi
+
+          if gh release view "${GITHUB_REF_NAME}" >/dev/null 2>&1; then
+            gh release upload "${GITHUB_REF_NAME}" "${assets[@]}" --clobber
+          else
+            gh release create "${GITHUB_REF_NAME}" "${assets[@]}" \
+              --verify-tag \
+              --generate-notes \
+              --title "ATab ${GITHUB_REF_NAME}"
+          fi
 
       - name: Upload failed Playwright report
         if: failure()
