@@ -5,10 +5,11 @@ import SessionsView from './SessionsView.vue'
 import BookmarksView from './BookmarksView.vue'
 import CloudBookmarksView from './CloudBookmarksView.vue'
 import HistoryView from './HistoryView.vue'
+import ResourcesView from './ResourcesView.vue'
 import SearchView from './SearchView.vue'
 import SyncView from './SyncView.vue'
 
-type WorkspaceView = 'search' | 'tabs' | 'sessions' | 'bookmarks' | 'cloud-bookmarks' | 'history' | 'sync'
+type WorkspaceView = 'search' | 'tabs' | 'sessions' | 'bookmarks' | 'cloud-bookmarks' | 'history' | 'resources' | 'sync'
 
 const activeView = ref<WorkspaceView>('tabs')
 const searchView = ref<InstanceType<typeof SearchView> | null>(null)
@@ -41,6 +42,7 @@ function onGlobalKeydown(event: KeyboardEvent): void {
         <button :class="{ active: activeView === 'sessions' }" @click="activeView = 'sessions'">会话</button>
         <button :class="{ active: activeView === 'bookmarks' }" @click="activeView = 'bookmarks'">书签</button>
         <button :class="{ active: activeView === 'cloud-bookmarks' }" @click="activeView = 'cloud-bookmarks'">云收藏</button>
+        <button :class="{ active: activeView === 'resources' }" @click="activeView = 'resources'">资料</button>
         <button :class="{ active: activeView === 'history' }" @click="activeView = 'history'">历史</button>
         <button :class="{ active: activeView === 'sync' }" @click="activeView = 'sync'">同步</button>
       </nav>
@@ -52,6 +54,7 @@ function onGlobalKeydown(event: KeyboardEvent): void {
     <SessionsView v-else-if="activeView === 'sessions'" />
     <BookmarksView v-else-if="activeView === 'bookmarks'" />
     <CloudBookmarksView v-else-if="activeView === 'cloud-bookmarks'" />
+    <ResourcesView v-else-if="activeView === 'resources'" />
     <HistoryView v-else-if="activeView === 'history'" />
     <SyncView v-else />
   </main>
