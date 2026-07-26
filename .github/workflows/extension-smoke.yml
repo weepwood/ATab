@@ -49,6 +49,16 @@ jobs:
       - name: Package extension ZIP
         run: python3 scripts/package-extension.py
 
+      - name: Upload extension package
+        uses: actions/upload-artifact@v4
+        with:
+          name: atab-extension-${{ github.sha }}
+          path: |
+            artifacts/atab-extension-*.zip
+            artifacts/atab-extension-*.zip.sha256
+          if-no-files-found: error
+          retention-days: 14
+
       - name: Install Playwright Chromium
         run: pnpm --filter @atab/e2e exec playwright install --with-deps chromium
 
@@ -56,14 +66,6 @@ jobs:
         env:
           ATAB_EXTENSION_DIR: ${{ github.workspace }}/apps/extension/dist
         run: xvfb-run -a pnpm --filter @atab/e2e smoke
-
-      - name: Upload extension ZIP
-        uses: actions/upload-artifact@v4
-        with:
-          name: atab-extension-${{ github.sha }}
-          path: artifacts/atab-extension-*.zip
-          if-no-files-found: error
-          retention-days: 14
 
       - name: Upload Playwright report
         if: failure()
