@@ -9,7 +9,9 @@ import {
   buildResourceEmbeddingText,
   cosineSimilarity,
   isResourceEmbeddingStale,
+  mergeSemanticSearchResults,
 } from '../src/shared/semanticSearch'
+import type { UnifiedSearchResult } from '../src/shared/unifiedSearch'
 
 describe('本地语义索引与余弦检索', () => {
   it('构建受限长度的资源嵌入文本并包含元数据', () => {
@@ -41,6 +43,25 @@ describe('本地语义索引与余弦检索', () => {
     stale.content.contentHash = 'new-hash'
     stale.embedding = makeEmbedding('resource-2', 'old-hash')
     expect(isResourceEmbeddingStale(stale)).toBe(true)
+  })
+
+  it('混合关键词与语义结果时按资源 ID 去重并合并命中字段', () => {
+    const keyword = makeSearchResult('resource:1', 82, ['title'], '关键词结果')
+    const semanticSame = makeSearchResult('resource:1', 155, ['body'], '语义相似度 85%')
+    const semanticNew = makeSearchResult('resource:2', 132, ['body'], '语义相似度 62%')
+
+    const merged = mergeSemanticSearchResults(
+      [keyword],
+      [semanticSame, semanticNew],
+    )
+
+    expect(merged).toHaveLength(2)
+    expect(merged[0]).toMatchObject({
+      id: 'resource:1',
+      subtitle: '语义相似度 85%',
+      matchedFields: expect.arrayContaining(['title', 'body']),
+    })
+    expect(merged.filter((result) => result.id === 'resource:1')).toHaveLength(1)
   })
 })
 
@@ -82,5 +103,25 @@ function makeEmbedding(
     contentHash,
     createdAt: '2026-07-26T00:00:00.000Z',
     updatedAt: '2026-07-26T00:00:00.000Z',
+  }
+}
+
+function makeSearchResult(
+  id: string,
+  score: number,
+  matchedFields: UnifiedSearchResult['matchedFields'],
+  subtitle: string,
+): UnifiedSearchResult {
+  return {
+    id,
+    source: 'resource',
+    targetId: id.replace('resource:', ''),
+    action: 'open-url',
+    title: id,
+    subtitle,
+    url: `https://example.com/${id}`,
+    keywords: [],
+    score,
+    matchedFields,
   }
 }
