@@ -16,12 +16,14 @@ ATab 的发布流程将“代码可以构建”与“扩展产物可以加载”
 4. 单元测试；
 5. 扩展、API 和共享协议生产构建；
 6. 校验扩展 Manifest 与构建产物；
-7. 生成可复现扩展 ZIP 和 SHA-256 校验文件；
-8. 上传扩展包工件；
-9. 安装 Playwright Chromium；
-10. 在 Xvfb 中加载 MV3 扩展；
-11. 执行新标签页、工作台、网页资料、统一搜索、设置和 IndexedDB 烟雾测试；
-12. 测试失败时上传 Playwright trace、截图和 HTML 报告。
+7. 校验根包、扩展包与构建 Manifest 的版本一致性；
+8. 生成可复现扩展 ZIP 和 SHA-256 校验文件；
+9. 重复打包并比较 ZIP 哈希；
+10. 上传扩展包工件；
+11. 安装 Playwright Chromium；
+12. 在 Xvfb 中加载 MV3 扩展；
+13. 执行新标签页、工作台、网页资料、统一搜索、设置和 IndexedDB 烟雾测试；
+14. 测试失败时上传 Playwright trace、截图和 HTML 报告。
 
 PR 扩展包工件保留 14 天，失败报告保留 7 天。扩展包在产物校验和打包成功后上传，因此即使后续 Chromium 测试失败，也可以下载对应 ZIP 与校验文件进行诊断；失败的烟雾测试不代表该产物可以发布。
 
@@ -80,9 +82,10 @@ artifacts/atab-extension-<manifest-version>.zip.sha256
 - 拒绝符号链接、绝对路径、`..` 路径和重复归档路径；
 - 产物输出目录不得位于扩展 `dist` 内部；
 - 压缩完成后重新读取 ZIP 验证结构；
-- 对最终 ZIP 计算 SHA-256，并生成标准校验文件。
+- 对最终 ZIP 计算 SHA-256，并生成标准校验文件；
+- PR 工作流会重复打包一次并确认 ZIP 哈希完全一致。
 
-校验下载文件：
+下载 ZIP 和 `.sha256` 到同一目录后校验：
 
 ```bash
 sha256sum -c atab-extension-0.1.0.zip.sha256
@@ -137,7 +140,7 @@ apps/e2e/tests/extension.smoke.spec.ts
 
 1. 重新运行类型检查、测试、构建、产物校验和 Chromium 烟雾测试；
 2. `scripts/verify-release-tag.mjs` 检查根 `package.json`、扩展 `package.json`、构建 Manifest 与标签版本一致；
-3. 生成扩展 ZIP 与 SHA-256 校验文件；
+3. 生成并验证扩展 ZIP 与 SHA-256 校验文件；
 4. 不存在同名 Release 时创建 Release 并生成发行说明；
 5. 已存在同名 Release 时覆盖上传 ZIP 与校验文件，使失败后的工作流可以安全重跑。
 
@@ -193,7 +196,7 @@ pnpm build
 node scripts/validate-extension.mjs
 node scripts/verify-release-tag.mjs v0.1.0
 python3 scripts/package-extension.py
-sha256sum -c artifacts/atab-extension-0.1.0.zip.sha256
+(cd artifacts && sha256sum -c atab-extension-0.1.0.zip.sha256)
 pnpm --filter @atab/e2e exec playwright install chromium
 ATAB_EXTENSION_DIR="$PWD/apps/extension/dist" \
   pnpm --filter @atab/e2e smoke
