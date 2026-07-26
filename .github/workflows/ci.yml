@@ -49,6 +49,8 @@ jobs:
       - name: Production build
         run: pnpm build
       - name: Mock API deployment doctor integration
+        id: doctor
+        continue-on-error: true
         env:
           HOST: 127.0.0.1
           PORT: 8787
@@ -81,6 +83,8 @@ jobs:
           active_code=$?
           set -e
 
+          printf '{"passive":%s,"active":%s}\n' "$passive_code" "$active_code" > doctor-exit-codes.json
+
           if [ "$passive_code" -ne 0 ] && [ "$passive_code" -ne 2 ]; then
             cat doctor-passive.json
             cat api-doctor.log
@@ -107,3 +111,22 @@ jobs:
             if (serialized.includes(forbidden)) throw new Error(`Doctor 输出包含禁止字段：${forbidden}`)
           }
           NODE
+      - name: Upload Doctor integration diagnostics
+        if: steps.doctor.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: doctor-integration-log
+          path: |
+            api-doctor.log
+            doctor-passive.json
+            doctor-active.json
+            doctor-exit-codes.json
+          if-no-files-found: ignore
+      - name: Report Doctor integration failure
+        if: steps.doctor.outcome == 'failure'
+        run: |
+          cat doctor-exit-codes.json 2>/dev/null || true
+          cat doctor-passive.json 2>/dev/null || true
+          cat doctor-active.json 2>/dev/null || true
+          cat api-doctor.log 2>/dev/null || true
+          exit 1
