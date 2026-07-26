@@ -6,7 +6,16 @@ export default defineManifest({
   description: '本地优先的 AI 标签页、书签与浏览会话工作台',
   version: '0.1.0',
   minimum_chrome_version: '109',
-  permissions: ['tabs', 'tabGroups', 'bookmarks', 'sessions', 'storage', 'alarms'],
+  permissions: [
+    'activeTab',
+    'scripting',
+    'tabs',
+    'tabGroups',
+    'bookmarks',
+    'sessions',
+    'storage',
+    'alarms',
+  ],
   optional_permissions: ['history'],
   optional_host_permissions: ['http://*/*', 'https://*/*'],
   chrome_url_overrides: {
