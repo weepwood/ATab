@@ -107,6 +107,7 @@ export async function searchSemanticResources(query: string): Promise<SemanticRe
     const resource = resourceById.get(embedding.resourceId)
     if (!resource) return []
     if (embedding.contentHash !== resource.contentHash) return []
+    if (embedding.provider !== response.provider || embedding.model !== response.model) return []
     if (embedding.dimensions !== queryVector.length) return []
     const similarity = cosineSimilarity(queryVector, embedding.vector)
     if (!Number.isFinite(similarity) || similarity < MIN_SEMANTIC_SIMILARITY) return []
