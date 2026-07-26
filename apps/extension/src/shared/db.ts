@@ -7,6 +7,7 @@ import type {
 import type {
   AiActionPlan,
   CloudBookmarkRecord,
+  ResourceContentRecord,
   ResourceRecord,
   SessionRecord,
 } from './domain'
@@ -51,6 +52,7 @@ export interface SyncMetadataRecord {
 
 class ATabDatabase extends Dexie {
   resources!: EntityTable<ResourceRecord, 'id'>
+  resourceContents!: EntityTable<ResourceContentRecord, 'resourceId'>
   sessions!: EntityTable<SessionRecord, 'id'>
   cloudBookmarks!: EntityTable<CloudBookmarkRecord, 'id'>
   settings!: EntityTable<SettingRecord, 'key'>
@@ -84,6 +86,17 @@ class ATabDatabase extends Dexie {
     })
     this.version(4).stores({
       resources: 'id, canonicalUrl, domain, lastSeenAt',
+      sessions: 'id, kind, updatedAt',
+      cloudBookmarks: 'id, canonicalUrl, folder, archived, updatedAt',
+      settings: 'key, updatedAt',
+      actionPlans: 'id, createdAt, risk',
+      syncOutbox: 'id, entityKey, entityType, status, updatedAt',
+      syncVersions: 'key, entityType, entityId',
+      syncMetadata: 'key, updatedAt',
+    })
+    this.version(5).stores({
+      resources: 'id, canonicalUrl, domain, capturedAt, lastSeenAt',
+      resourceContents: 'resourceId, capturedAt, contentHash',
       sessions: 'id, kind, updatedAt',
       cloudBookmarks: 'id, canonicalUrl, folder, archived, updatedAt',
       settings: 'key, updatedAt',
