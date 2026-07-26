@@ -6,6 +6,10 @@ import {
   validateAgentPlanRequest,
   validateResourceSummaryRequest,
 } from '@atab/contracts'
+import {
+  normalizeEmbeddingDraft,
+  validateEmbeddingRequest,
+} from '@atab/contracts/embedding'
 import { loadConfig, type ApiConfig } from './config'
 import { createAgentProvider, type AgentProvider } from './providers'
 import { SupabaseSyncGateway, type SyncGateway } from './sync/gateway'
@@ -39,6 +43,7 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
     status: 'ok',
     provider: provider.name,
     model: provider.model ?? null,
+    embeddingModel: provider.embeddingModel ?? null,
     syncConfigured: syncGateway.configured,
   }))
 
@@ -102,6 +107,43 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
       return reply.code(502).send({
         error: {
           code: 'SUMMARY_GENERATION_FAILED',
+          message: errorMessage(cause),
+        },
+      })
+    }
+  })
+
+  app.post('/v1/ai/embeddings', async (request, reply) => {
+    let input
+    try {
+      input = validateEmbeddingRequest(request.body)
+    } catch (cause) {
+      return reply.code(400).send({
+        error: {
+          code: 'INVALID_EMBEDDING_REQUEST',
+          message: errorMessage(cause),
+        },
+      })
+    }
+
+    try {
+      const draft = await provider.embedTexts(input)
+      const normalized = normalizeEmbeddingDraft(
+        draft,
+        input.inputs.map((item) => item.id),
+      )
+      if (!provider.embeddingModel) throw new Error('Provider 未声明嵌入模型')
+      return reply.send({
+        embeddings: normalized.embeddings,
+        provider: provider.name,
+        model: provider.embeddingModel,
+        dimensions: normalized.dimensions,
+      })
+    } catch (cause) {
+      request.log.error({ err: cause }, 'AI 嵌入生成失败')
+      return reply.code(502).send({
+        error: {
+          code: 'EMBEDDING_GENERATION_FAILED',
           message: errorMessage(cause),
         },
       })
