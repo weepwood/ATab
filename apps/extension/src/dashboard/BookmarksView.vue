@@ -143,7 +143,6 @@ async function submitEditor(): Promise<void> {
             v-for="node in store.visibleItems"
             :key="node.id"
             class="bookmark-row"
-            @dblclick="store.openNode(node)"
           >
             <button class="node-main" @click="store.openNode(node)">
               <span class="node-icon">{{ node.url ? '↗' : '▸' }}</span>
