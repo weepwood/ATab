@@ -1,5 +1,6 @@
 import { db, type SyncOutboxRecord } from '../db'
 import type { SessionRecord } from '../domain'
+import { parseCloudBookmarkPayload } from '../cloudBookmarks'
 import { parseSessionImport } from '../sessions'
 import { retryConflictWithLocal, syncEntityKey } from './outbox'
 
@@ -14,6 +15,7 @@ export async function acceptServerConflict(record: SyncOutboxRecord): Promise<vo
   await db.transaction(
     'rw',
     db.sessions,
+    db.cloudBookmarks,
     db.settings,
     db.syncOutbox,
     db.syncVersions,
@@ -23,6 +25,12 @@ export async function acceptServerConflict(record: SyncOutboxRecord): Promise<vo
           await db.sessions.delete(server.entityId)
         } else if (server.payload) {
           await db.sessions.put(parseServerSession(server.entityId, server.payload))
+        }
+      } else if (server.entityType === 'cloud-bookmark') {
+        if (server.deleted) {
+          await db.cloudBookmarks.delete(server.entityId)
+        } else if (server.payload) {
+          await db.cloudBookmarks.put(parseCloudBookmarkPayload(server.entityId, server.payload))
         }
       } else if (server.entityType === 'setting' && server.payload) {
         const key = typeof server.payload.key === 'string'
