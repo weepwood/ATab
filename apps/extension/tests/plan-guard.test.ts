@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import { assertPlanFresh, findStalePlanTargetIds } from '../src/shared/ai/planGuard'
+import {
+  assertPlanExecutable,
+  assertPlanFresh,
+  findStalePlanTargetIds,
+} from '../src/shared/ai/planGuard'
 import type { AiActionPlan, TabView } from '../src/shared/domain'
 
 const plan: AiActionPlan = {
@@ -37,5 +41,14 @@ describe('AI 计划门禁', () => {
     expect(findStalePlanTargetIds(targets, [])).toEqual([1])
     expect(findStalePlanTargetIds(targets, [{ ...tab, url: 'https://example.com/changed' }])).toEqual([1])
     expect(findStalePlanTargetIds(targets, [{ ...tab, windowId: 11 }])).toEqual([1])
+  })
+
+  it('允许可逆操作但阻止尚无恢复记录的删除操作', () => {
+    expect(() => assertPlanExecutable(plan)).not.toThrow()
+    expect(() => assertPlanExecutable({
+      ...plan,
+      risk: 'destructive',
+      operations: [{ type: 'CLOSE_TABS', tabIds: [1] }],
+    })).toThrow('可恢复记录')
   })
 })
