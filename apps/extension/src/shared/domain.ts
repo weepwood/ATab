@@ -28,6 +28,30 @@ export interface BookmarkNodeView {
   children: BookmarkNodeView[]
 }
 
+export interface CloudBookmarkRecord {
+  id: string
+  title: string
+  url: string
+  canonicalUrl: string
+  folder: string
+  tags: string[]
+  note: string
+  archived: boolean
+  source: 'manual' | 'browser-bookmark'
+  sourceBookmarkId?: string
+  createdAt: string
+  updatedAt: string
+}
+
+export interface CloudBookmarkImportCandidate {
+  sourceBookmarkId: string
+  title: string
+  url: string
+  canonicalUrl: string
+  folder: string
+  duplicate: boolean
+}
+
 export type TabGroupColor = SharedTabGroupColor
 
 export interface SessionGroupSnapshot {
