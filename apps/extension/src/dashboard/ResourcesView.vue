@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { onMounted } from 'vue'
 import type { ResourceRecord } from '@/shared/domain'
+import { getResourceSummaryUploadPreview } from '@/shared/ai/resourceSummary'
 import { isPotentiallySensitivePage } from '@/shared/pageCapture'
+import type { ResourceLibraryItem } from '@/shared/resourceIndex'
 import { useResourcesStore } from '@/stores/resources'
 
 const store = useResourcesStore()
@@ -38,9 +40,37 @@ async function refresh(resource: ResourceRecord): Promise<void> {
   }
 }
 
+async function summarize(item: ResourceLibraryItem): Promise<void> {
+  try {
+    const preview = await getResourceSummaryUploadPreview(item.content)
+    const truncation = preview.truncated
+      ? '\n正文超过单次摘要上限，只发送前 120,000 个字符。'
+      : ''
+    const confirmed = window.confirm(
+      `生成“${item.resource.title}”的 AI 摘要？\n\n将向以下服务发送标题、URL、语言和 ${formatNumber(preview.characterCount)} 个正文字符：\n${preview.endpoint}${truncation}\n\n摘要结果只保存在当前浏览器，不自动同步。`,
+    )
+    if (!confirmed) return
+    await store.summarize(item)
+  } catch (cause) {
+    if (cause instanceof Error) store.error = cause.message
+  }
+}
+
+async function removeSummary(item: ResourceLibraryItem): Promise<void> {
+  const confirmed = window.confirm(
+    `删除“${item.resource.title}”的本地 AI 摘要？\n\n网页正文和资源记录会继续保留。`,
+  )
+  if (!confirmed) return
+  try {
+    await store.removeSummary(item)
+  } catch {
+    // 错误已经写入 store。
+  }
+}
+
 async function remove(resource: ResourceRecord): Promise<void> {
   const confirmed = window.confirm(
-    `删除“${resource.title}”的 ATab 本地正文快照？\n\n不会删除浏览器书签、历史记录或网页本身。`,
+    `删除“${resource.title}”的 ATab 本地正文快照？\n\n关联的本地 AI 摘要也会删除；不会删除浏览器书签、历史记录或网页本身。`,
   )
   if (!confirmed) return
   try {
@@ -80,7 +110,7 @@ function formatNumber(value: number): string {
     </header>
 
     <p class="privacy-notice">
-      ATab 只在你主动点击保存时读取所选页面。正文保存在当前浏览器的 IndexedDB 中，不进入同步 Outbox，也不会自动发送给 AI。
+      ATab 只在你主动点击保存时读取所选页面。正文默认保存在当前浏览器；只有再次明确确认“生成 AI 摘要”时，才会发送到你配置的 AI 服务。
     </p>
 
     <section class="capture-panel surface">
@@ -115,7 +145,7 @@ function formatNumber(value: number): string {
       <input
         v-model="store.query"
         class="input"
-        placeholder="搜索标题、网址、描述或已保存正文"
+        placeholder="搜索标题、网址、正文或本地 AI 摘要"
       />
       <span>{{ store.filteredItems.length }} 项 · {{ formatNumber(store.totalCharacters) }} 字符</span>
     </section>
@@ -157,13 +187,32 @@ function formatNumber(value: number): string {
           <span v-if="item.resource.language">{{ item.resource.language }}</span>
         </div>
 
+        <section v-if="item.summary" class="summary-panel" :class="{ stale: store.isSummaryStale(item) }">
+          <header class="summary-header">
+            <div>
+              <strong>AI 摘要</strong>
+              <span>{{ item.summary.provider }}<template v-if="item.summary.model"> / {{ item.summary.model }}</template></span>
+            </div>
+            <span v-if="store.isSummaryStale(item)" class="stale-badge">正文已更新，摘要过期</span>
+          </header>
+          <p>{{ item.summary.summary }}</p>
+          <ul v-if="item.summary.keyPoints.length">
+            <li v-for="point in item.summary.keyPoints" :key="point">{{ point }}</li>
+          </ul>
+          <div v-if="item.summary.tags.length" class="summary-tags">
+            <span v-for="tag in item.summary.tags" :key="tag">{{ tag }}</span>
+          </div>
+          <small>生成于 {{ formatTime(item.summary.updatedAt) }} · 仅本地保存</small>
+        </section>
+
         <div class="privacy-tags">
-          <span>仅本地</span>
-          <span>AI 未读取</span>
+          <span>正文仅本地</span>
+          <span v-if="item.summary">摘要仅本地</span>
+          <span v-else>AI 未读取</span>
           <span>未同步</span>
         </div>
 
-        <footer>
+        <footer class="resource-actions">
           <button class="row-action" @click="store.open(item.resource)">打开网页</button>
           <button
             class="row-action"
@@ -172,6 +221,16 @@ function formatNumber(value: number): string {
             @click="refresh(item.resource)"
           >
             重新采集
+          </button>
+          <button
+            class="summary-action"
+            :disabled="store.isSummarizing(item.resource.id)"
+            @click="summarize(item)"
+          >
+            {{ store.isSummarizing(item.resource.id) ? '摘要生成中…' : item.summary ? '重新生成摘要' : '生成 AI 摘要' }}
+          </button>
+          <button v-if="item.summary" class="row-action" :disabled="store.mutating" @click="removeSummary(item)">
+            删除摘要
           </button>
           <button class="danger-link" :disabled="store.mutating" @click="remove(item.resource)">
             删除快照
@@ -198,9 +257,9 @@ h1 { margin: 2px 0 0; font-size: 32px; }
 .capture-actions { display: flex; gap: 8px; }
 .library-toolbar { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 14px; align-items: center; margin: 22px 0 16px; }
 .library-toolbar span { color: var(--muted); white-space: nowrap; }
-.resource-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 16px; }
+.resource-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(400px, 1fr)); gap: 16px; }
 .resource-card { display: grid; gap: 14px; padding: 18px; min-width: 0; }
-.resource-card header { display: grid; grid-template-columns: 42px minmax(0, 1fr); gap: 12px; align-items: center; }
+.resource-card > header { display: grid; grid-template-columns: 42px minmax(0, 1fr); gap: 12px; align-items: center; }
 .resource-icon { width: 42px; height: 42px; display: grid; place-items: center; overflow: hidden; border-radius: 13px; background: var(--primary-soft); color: var(--primary); font-weight: 700; }
 .resource-icon img { width: 22px; height: 22px; object-fit: contain; }
 .resource-heading { min-width: 0; display: grid; gap: 4px; }
@@ -208,11 +267,21 @@ h1 { margin: 2px 0 0; font-size: 32px; }
 .resource-heading small { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .description { margin: 0; color: var(--text); line-height: 1.6; }
 .excerpt { margin: 0; color: var(--muted); line-height: 1.65; display: -webkit-box; -webkit-line-clamp: 5; -webkit-box-orient: vertical; overflow: hidden; }
-.resource-meta, .privacy-tags { display: flex; flex-wrap: wrap; gap: 7px; color: var(--muted); font-size: 12px; }
-.resource-meta span, .privacy-tags span { padding: 5px 8px; border-radius: 999px; background: var(--surface-strong); }
+.resource-meta, .privacy-tags, .summary-tags { display: flex; flex-wrap: wrap; gap: 7px; color: var(--muted); font-size: 12px; }
+.resource-meta span, .privacy-tags span, .summary-tags span { padding: 5px 8px; border-radius: 999px; background: var(--surface-strong); }
 .privacy-tags span { color: var(--primary); background: var(--primary-soft); }
-.resource-card footer { display: flex; gap: 8px; padding-top: 4px; border-top: 1px solid var(--line); }
-.row-action, .danger-link { border: 0; background: transparent; padding: 7px; color: var(--muted); }
+.summary-panel { display: grid; gap: 10px; padding: 14px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface-strong); }
+.summary-panel.stale { border-color: rgba(154, 103, 0, 0.45); background: rgba(154, 103, 0, 0.07); }
+.summary-header { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; }
+.summary-header div { display: grid; gap: 3px; }
+.summary-header span, .summary-panel small { color: var(--muted); font-size: 12px; }
+.stale-badge { padding: 4px 7px; border-radius: 999px; color: #9a6700 !important; background: rgba(154, 103, 0, 0.12); white-space: nowrap; }
+.summary-panel p { margin: 0; line-height: 1.7; }
+.summary-panel ul { margin: 0; padding-left: 20px; display: grid; gap: 5px; color: var(--muted); line-height: 1.55; }
+.summary-tags span { color: #7b61ff; background: rgba(123, 97, 255, 0.1); }
+.resource-actions { display: flex; flex-wrap: wrap; gap: 8px; padding-top: 4px; border-top: 1px solid var(--line); }
+.row-action, .summary-action, .danger-link { border: 0; background: transparent; padding: 7px; color: var(--muted); }
+.summary-action { color: var(--primary); }
 .danger-link { margin-left: auto; color: var(--danger); }
 button:disabled { cursor: not-allowed; opacity: 0.55; }
 .empty { padding: 72px 24px; text-align: center; color: var(--muted); }
@@ -225,5 +294,7 @@ button:disabled { cursor: not-allowed; opacity: 0.55; }
   .library-toolbar { grid-template-columns: 1fr; }
   .capture-actions { display: grid; grid-template-columns: 1fr 1fr; }
   .resource-grid { grid-template-columns: 1fr; }
+  .summary-header { display: grid; }
+  .danger-link { margin-left: 0; }
 }
 </style>

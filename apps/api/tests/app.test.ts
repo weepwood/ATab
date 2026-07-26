@@ -23,7 +23,17 @@ const tabs = [{
   muted: false,
 }]
 
-describe('AI 计划 API', () => {
+const summaryRequest = {
+  resourceId: 'resource-1',
+  title: '复杂系统文章',
+  url: 'https://example.com/article',
+  language: 'zh-CN',
+  contentHash: 'a'.repeat(64),
+  content: '复杂系统由多个相互作用的组成部分构成。反馈回路会改变系统行为。涌现现象无法简单还原为单个部分。'.repeat(8),
+  locale: 'zh-CN',
+}
+
+describe('AI API', () => {
   it('通过 Mock Provider 返回经过校验的计划', async () => {
     const app = await buildApp({ config, provider: new MockAgentProvider() })
     const response = await app.inject({
@@ -49,7 +59,7 @@ describe('AI 计划 API', () => {
     })
   })
 
-  it('拒绝无效请求', async () => {
+  it('拒绝无效计划请求', async () => {
     const app = await buildApp({ config, provider: new MockAgentProvider() })
     const response = await app.inject({
       method: 'POST',
@@ -81,6 +91,13 @@ describe('AI 计划 API', () => {
           }],
         }
       },
+      async summarizeResource() {
+        return {
+          summary: '测试摘要',
+          keyPoints: [],
+          tags: [],
+        }
+      },
     }
 
     const app = await buildApp({ config, provider: maliciousProvider })
@@ -94,6 +111,77 @@ describe('AI 计划 API', () => {
     expect(response.statusCode).toBe(502)
     expect(response.json()).toMatchObject({
       error: { code: 'PLAN_GENERATION_FAILED' },
+    })
+  })
+
+  it('通过 Mock Provider 生成结构化网页摘要', async () => {
+    const app = await buildApp({ config, provider: new MockAgentProvider() })
+    const response = await app.inject({
+      method: 'POST',
+      url: '/v1/ai/resources/summarize',
+      payload: summaryRequest,
+    })
+    await app.close()
+
+    expect(response.statusCode).toBe(200)
+    expect(response.json()).toMatchObject({
+      provider: 'mock',
+      model: 'atab-mock-v1',
+      summary: {
+        keyPoints: expect.any(Array),
+        tags: expect.arrayContaining(['本地 Mock 摘要']),
+      },
+    })
+  })
+
+  it('拒绝无效网页摘要请求', async () => {
+    const app = await buildApp({ config, provider: new MockAgentProvider() })
+    const response = await app.inject({
+      method: 'POST',
+      url: '/v1/ai/resources/summarize',
+      payload: { ...summaryRequest, contentHash: 'invalid' },
+    })
+    await app.close()
+
+    expect(response.statusCode).toBe(400)
+    expect(response.json()).toMatchObject({
+      error: { code: 'INVALID_SUMMARY_REQUEST' },
+    })
+  })
+
+  it('拒绝不符合协议的模型摘要输出', async () => {
+    const invalidProvider: AgentProvider = {
+      name: 'invalid-summary-test',
+      async generatePlan() {
+        return {
+          summary: '空计划',
+          reason: '测试',
+          risk: 'read-only',
+          requiresConfirmation: false,
+          operations: [],
+        }
+      },
+      async summarizeResource() {
+        return {
+          summary: '',
+          keyPoints: ['有效要点'],
+          tags: [],
+          injectedField: '不允许的字段',
+        }
+      },
+    }
+
+    const app = await buildApp({ config, provider: invalidProvider })
+    const response = await app.inject({
+      method: 'POST',
+      url: '/v1/ai/resources/summarize',
+      payload: summaryRequest,
+    })
+    await app.close()
+
+    expect(response.statusCode).toBe(502)
+    expect(response.json()).toMatchObject({
+      error: { code: 'SUMMARY_GENERATION_FAILED' },
     })
   })
 

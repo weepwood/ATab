@@ -2,14 +2,17 @@ import { db } from './db'
 import type {
   ResourceContentRecord,
   ResourceRecord,
+  ResourceSummaryRecord,
   TabView,
 } from './domain'
+import { requestResourceSummary } from './ai/resourceSummary'
 import { capturePageFromTab } from './pageCapture'
 import { getDomain, normalizeUrl } from './url'
 
 export interface ResourceLibraryItem {
   resource: ResourceRecord
   content: ResourceContentRecord
+  summary?: ResourceSummaryRecord
 }
 
 export async function captureAndStoreResource(tab: TabView): Promise<ResourceLibraryItem> {
@@ -19,6 +22,7 @@ export async function captureAndStoreResource(tab: TabView): Promise<ResourceLib
   const contentHash = await sha256(snapshot.text)
   const existing = await db.resources.where('canonicalUrl').equals(canonicalUrl).first()
   const resourceId = existing?.id ?? crypto.randomUUID()
+  const existingSummary = await db.resourceSummaries.get(resourceId)
 
   const resource: ResourceRecord = {
     id: resourceId,
@@ -32,7 +36,7 @@ export async function captureAndStoreResource(tab: TabView): Promise<ResourceLib
     contentHash,
     contentLength: snapshot.text.length,
     capturedAt: now,
-    summaryStatus: existing?.summaryStatus ?? 'not-requested',
+    summaryStatus: existingSummary?.contentHash === contentHash ? 'ready' : 'not-requested',
     embeddingStatus: existing?.embeddingStatus ?? 'not-requested',
     firstSeenAt: existing?.firstSeenAt ?? now,
     lastSeenAt: now,
@@ -51,26 +55,86 @@ export async function captureAndStoreResource(tab: TabView): Promise<ResourceLib
     await db.resources.put(resource)
     await db.resourceContents.put(content)
   })
-  return { resource, content }
+  return { resource, content, summary: existingSummary }
 }
 
 export async function listResourceLibraryItems(): Promise<ResourceLibraryItem[]> {
-  const [resources, contents] = await Promise.all([
+  const [resources, contents, summaries] = await Promise.all([
     db.resources.orderBy('capturedAt').reverse().toArray(),
     db.resourceContents.toArray(),
+    db.resourceSummaries.toArray(),
   ])
   const contentById = new Map(contents.map((content) => [content.resourceId, content]))
+  const summaryById = new Map(summaries.map((summary) => [summary.resourceId, summary]))
   return resources.flatMap((resource) => {
     const content = contentById.get(resource.id)
-    return content ? [{ resource, content }] : []
+    return content ? [{ resource, content, summary: summaryById.get(resource.id) }] : []
+  })
+}
+
+export async function generateAndStoreResourceSummary(
+  item: ResourceLibraryItem,
+): Promise<ResourceSummaryRecord> {
+  await db.resources.update(item.resource.id, { summaryStatus: 'pending' })
+
+  try {
+    const response = await requestResourceSummary(item.resource, item.content)
+    const currentContent = await db.resourceContents.get(item.resource.id)
+    if (!currentContent || currentContent.contentHash !== item.content.contentHash) {
+      throw new Error('网页正文已在摘要生成期间发生变化，请基于最新内容重新生成')
+    }
+
+    const existing = await db.resourceSummaries.get(item.resource.id)
+    const now = new Date().toISOString()
+    const record: ResourceSummaryRecord = {
+      resourceId: item.resource.id,
+      summary: response.summary.summary,
+      keyPoints: response.summary.keyPoints,
+      tags: response.summary.tags,
+      provider: response.provider,
+      model: response.model,
+      contentHash: currentContent.contentHash,
+      createdAt: existing?.createdAt ?? now,
+      updatedAt: now,
+    }
+
+    await db.transaction('rw', db.resources, db.resourceSummaries, async () => {
+      await db.resourceSummaries.put(record)
+      await db.resources.update(item.resource.id, { summaryStatus: 'ready' })
+    })
+    return record
+  } catch (cause) {
+    const currentContent = await db.resourceContents.get(item.resource.id)
+    if (currentContent?.contentHash === item.content.contentHash) {
+      await db.resources.update(item.resource.id, { summaryStatus: 'error' })
+    }
+    throw cause
+  }
+}
+
+export async function deleteResourceSummary(resourceId: string): Promise<void> {
+  await db.transaction('rw', db.resources, db.resourceSummaries, async () => {
+    await db.resourceSummaries.delete(resourceId)
+    await db.resources.update(resourceId, { summaryStatus: 'not-requested' })
   })
 }
 
 export async function deleteResourceSnapshot(resourceId: string): Promise<void> {
-  await db.transaction('rw', db.resources, db.resourceContents, async () => {
-    await db.resourceContents.delete(resourceId)
-    await db.resources.delete(resourceId)
-  })
+  await db.transaction(
+    'rw',
+    db.resources,
+    db.resourceContents,
+    db.resourceSummaries,
+    async () => {
+      await db.resourceSummaries.delete(resourceId)
+      await db.resourceContents.delete(resourceId)
+      await db.resources.delete(resourceId)
+    },
+  )
+}
+
+export function isResourceSummaryStale(item: ResourceLibraryItem): boolean {
+  return Boolean(item.summary && item.summary.contentHash !== item.content.contentHash)
 }
 
 export function filterResourceLibraryItems(
@@ -79,7 +143,7 @@ export function filterResourceLibraryItems(
 ): ResourceLibraryItem[] {
   const tokens = normalizeQuery(query)
   if (tokens.length === 0) return items
-  return items.filter(({ resource, content }) => {
+  return items.filter(({ resource, content, summary }) => {
     const haystack = [
       resource.title,
       resource.originalUrl,
@@ -87,6 +151,9 @@ export function filterResourceLibraryItems(
       resource.domain,
       resource.description ?? '',
       content.text,
+      summary?.summary ?? '',
+      ...(summary?.keyPoints ?? []),
+      ...(summary?.tags ?? []),
     ].join('\n').normalize('NFKC').toLocaleLowerCase('zh-CN')
     return tokens.every((token) => haystack.includes(token))
   })

@@ -1,3 +1,5 @@
+export * from './resourceSummary'
+
 export const TAB_GROUP_COLORS = [
   'grey',
   'blue',

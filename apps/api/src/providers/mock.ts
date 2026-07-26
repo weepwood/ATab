@@ -1,8 +1,15 @@
-import type { AgentPlanDraft, AgentPlanRequest, AgentTabContext } from '@atab/contracts'
+import type {
+  AgentPlanDraft,
+  AgentPlanRequest,
+  AgentTabContext,
+  ResourceSummaryDraft,
+  ResourceSummaryRequest,
+} from '@atab/contracts'
 import type { AgentProvider } from './types'
 
 export class MockAgentProvider implements AgentProvider {
   readonly name = 'mock'
+  readonly model = 'atab-mock-v1'
 
   async generatePlan(request: AgentPlanRequest): Promise<AgentPlanDraft> {
     const command = request.command.toLowerCase()
@@ -17,6 +24,19 @@ export class MockAgentProvider implements AgentProvider {
       risk: 'read-only',
       requiresConfirmation: false,
       operations: [],
+    }
+  }
+
+  async summarizeResource(request: ResourceSummaryRequest): Promise<ResourceSummaryDraft> {
+    const sentences = splitSentences(request.content)
+    const selected = sentences.slice(0, 4)
+    const summary = selected.join(' ').slice(0, 900)
+      || request.content.slice(0, 900)
+
+    return {
+      summary,
+      keyPoints: selected.slice(0, 3).map((sentence) => sentence.slice(0, 280)),
+      tags: deriveTags(request),
     }
   }
 }
@@ -84,6 +104,33 @@ function mutePlan(tabs: AgentTabContext[]): AgentPlanDraft {
       color: null,
     }],
   }
+}
+
+function splitSentences(content: string): string[] {
+  const normalized = content.replace(/\s+/g, ' ').trim()
+  const sentences = normalized
+    .split(/(?<=[。！？.!?])\s*/u)
+    .map((sentence) => sentence.trim())
+    .filter((sentence) => sentence.length >= 12)
+  return sentences.length > 0 ? sentences : [normalized.slice(0, 900)]
+}
+
+function deriveTags(request: ResourceSummaryRequest): string[] {
+  const tags = new Set<string>(['本地 Mock 摘要'])
+  try {
+    tags.add(new URL(request.url).hostname.replace(/^www\./, ''))
+  } catch {
+    // 请求已经经过共享协议校验，保留防御性分支。
+  }
+  if (request.language) tags.add(request.language)
+  for (const word of request.title
+    .split(/[\s·｜|：:—–\-_/]+/u)
+    .map((item) => item.trim())
+    .filter((item) => item.length >= 2)
+    .slice(0, 4)) {
+    tags.add(word.slice(0, 80))
+  }
+  return [...tags].slice(0, 12)
 }
 
 function normalizeUrl(value: string): string {

@@ -134,5 +134,17 @@ export interface ResourceContentRecord {
   capturedAt: string
 }
 
+export interface ResourceSummaryRecord {
+  resourceId: string
+  summary: string
+  keyPoints: string[]
+  tags: string[]
+  provider: string
+  model?: string
+  contentHash: string
+  createdAt: string
+  updatedAt: string
+}
+
 export type AiOperation = AgentOperation
 export type AiActionPlan = AgentActionPlan

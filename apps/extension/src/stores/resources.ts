@@ -6,8 +6,11 @@ import { isCapturablePageUrl } from '@/shared/pageCapture'
 import {
   captureAndStoreResource,
   deleteResourceSnapshot,
+  deleteResourceSummary,
   filterResourceLibraryItems,
   findOpenTabForResource,
+  generateAndStoreResourceSummary,
+  isResourceSummaryStale,
   listResourceLibraryItems,
   type ResourceLibraryItem,
 } from '@/shared/resourceIndex'
@@ -20,6 +23,7 @@ export const useResourcesStore = defineStore('resources', () => {
   const loading = ref(false)
   const capturing = ref(false)
   const mutating = ref(false)
+  const summarizingIds = ref<string[]>([])
   const error = ref('')
   const message = ref('')
 
@@ -84,6 +88,41 @@ export const useResourcesStore = defineStore('resources', () => {
     }
   }
 
+  async function summarize(item: ResourceLibraryItem): Promise<void> {
+    if (!summarizingIds.value.includes(item.resource.id)) {
+      summarizingIds.value = [...summarizingIds.value, item.resource.id]
+    }
+    error.value = ''
+    message.value = ''
+    try {
+      const summary = await generateAndStoreResourceSummary(item)
+      await refreshItems()
+      message.value = `已使用 ${summary.provider}${summary.model ? ` / ${summary.model}` : ''} 生成“${item.resource.title}”的摘要，并仅保存到本地。`
+    } catch (cause) {
+      error.value = messageOf(cause)
+      await refreshItems()
+      throw cause
+    } finally {
+      summarizingIds.value = summarizingIds.value.filter((id) => id !== item.resource.id)
+    }
+  }
+
+  async function removeSummary(item: ResourceLibraryItem): Promise<void> {
+    mutating.value = true
+    error.value = ''
+    message.value = ''
+    try {
+      await deleteResourceSummary(item.resource.id)
+      await refreshItems()
+      message.value = `已删除“${item.resource.title}”的本地 AI 摘要，网页正文仍保留。`
+    } catch (cause) {
+      error.value = messageOf(cause)
+      throw cause
+    } finally {
+      mutating.value = false
+    }
+  }
+
   async function remove(resource: ResourceRecord): Promise<void> {
     mutating.value = true
     error.value = ''
@@ -108,6 +147,10 @@ export const useResourcesStore = defineStore('resources', () => {
     return Boolean(findOpenTabForResource(resource, tabs.value))
   }
 
+  function isSummarizing(resourceId: string): boolean {
+    return summarizingIds.value.includes(resourceId)
+  }
+
   return {
     items,
     tabs,
@@ -116,6 +159,7 @@ export const useResourcesStore = defineStore('resources', () => {
     loading,
     capturing,
     mutating,
+    summarizingIds,
     error,
     message,
     capturableTabs,
@@ -127,9 +171,13 @@ export const useResourcesStore = defineStore('resources', () => {
     refreshTabs,
     captureSelected,
     refreshResource,
+    summarize,
+    removeSummary,
     remove,
     open,
     hasOpenTab,
+    isSummarizing,
+    isSummaryStale: isResourceSummaryStale,
   }
 })
 
