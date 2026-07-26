@@ -13,6 +13,8 @@ permissions:
   contents: read
   pages: write
   id-token: write
+  issues: write
+  pull-requests: write
 
 concurrency:
   group: github-pages
@@ -55,6 +57,8 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    outputs:
+      page_url: ${{ steps.deployment.outputs.page_url }}
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
@@ -62,3 +66,35 @@ jobs:
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
+
+  report:
+    if: ${{ always() }}
+    needs: [build, deploy]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
+    steps:
+      - name: Report deployment result to PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BUILD_RESULT: ${{ needs.build.result }}
+          DEPLOY_RESULT: ${{ needs.deploy.result }}
+          PAGE_URL: ${{ needs.deploy.outputs.page_url }}
+        run: |
+          set -euo pipefail
+          page_url="${PAGE_URL:-https://weepwood.github.io/ATab/}"
+          body=$(cat <<EOF
+          ### GitHub Pages 部署报告
+
+          - 静态页面构建：\`${BUILD_RESULT}\`
+          - Pages 部署：\`${DEPLOY_RESULT}\`
+          - 访问地址：${page_url}
+          - 提交：\`${GITHUB_SHA}\`
+
+          若部署失败，请查看本次 **Deploy GitHub Pages Demo** 工作流日志。
+          EOF
+          )
+          gh api --method POST "repos/${GITHUB_REPOSITORY}/issues/37/comments" -f body="$body"
