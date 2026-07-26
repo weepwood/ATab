@@ -57,6 +57,11 @@ export const RESOURCE_SUMMARY_DRAFT_SCHEMA = {
 
 export function validateResourceSummaryRequest(value: unknown): ResourceSummaryRequest {
   const input = asObject(value, '摘要请求')
+  assertAllowedKeys(
+    input,
+    ['resourceId', 'title', 'url', 'language', 'contentHash', 'content', 'locale'],
+    '摘要请求',
+  )
   const resourceId = readString(input.resourceId, 'resourceId', 128)
   const title = readString(input.title, 'title', 1_000)
   const url = readHttpUrl(input.url, 'url')
@@ -84,6 +89,7 @@ export function validateResourceSummaryRequest(value: unknown): ResourceSummaryR
 
 export function normalizeResourceSummaryDraft(value: unknown): ResourceSummaryDraft {
   const input = asObject(value, '摘要结果')
+  assertAllowedKeys(input, ['summary', 'keyPoints', 'tags'], '摘要结果')
   const summary = readString(input.summary, 'summary', 4_000).trim()
   const keyPoints = readUniqueStringArray(
     input.keyPoints,
@@ -103,6 +109,7 @@ export function normalizeResourceSummaryDraft(value: unknown): ResourceSummaryDr
 
 export function parseResourceSummaryApiResponse(value: unknown): ResourceSummaryApiResponse {
   const input = asObject(value, '摘要 API 响应')
+  assertAllowedKeys(input, ['summary', 'provider', 'model'], '摘要 API 响应')
   const provider = readString(input.provider, 'provider', 120).trim()
   const model = input.model === undefined || input.model === null
     ? undefined
@@ -156,6 +163,18 @@ function readString(value: unknown, label: string, maxLength: number): string {
   if (!value.trim()) throw new Error(`${label} 不能为空`)
   if (value.length > maxLength) throw new Error(`${label} 过长`)
   return value
+}
+
+function assertAllowedKeys(
+  input: Record<string, unknown>,
+  allowedKeys: string[],
+  label: string,
+): void {
+  const allowed = new Set(allowedKeys)
+  const unexpected = Object.keys(input).filter((key) => !allowed.has(key))
+  if (unexpected.length > 0) {
+    throw new Error(`${label} 包含未声明字段：${unexpected.join(', ')}`)
+  }
 }
 
 function asObject(value: unknown, label: string): Record<string, unknown> {
