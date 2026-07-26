@@ -1,4 +1,12 @@
-import type { AiOperation, BookmarkNodeView, TabView } from './domain'
+import type {
+  AiOperation,
+  BookmarkNodeView,
+  SessionRecord,
+  SessionRestoreResult,
+  SessionWindowSnapshot,
+  SessionWindowState,
+  TabView,
+} from './domain'
 
 function toTabView(tab: chrome.tabs.Tab): TabView | null {
   if (tab.id === undefined) return null
@@ -26,6 +34,53 @@ function toBookmarkNode(node: chrome.bookmarks.BookmarkTreeNode): BookmarkNodeVi
     dateAdded: node.dateAdded,
     dateGroupModified: node.dateGroupModified,
     children: (node.children ?? []).map(toBookmarkNode),
+  }
+}
+
+function toSessionWindowState(state: string | undefined): SessionWindowState {
+  if (state === 'minimized' || state === 'maximized' || state === 'fullscreen' || state === 'locked') {
+    return state
+  }
+  return 'normal'
+}
+
+async function captureWindow(window: chrome.windows.Window): Promise<SessionWindowSnapshot | null> {
+  if (window.id === undefined) return null
+
+  let groups: chrome.tabGroups.TabGroup[] = []
+  try {
+    groups = await chrome.tabGroups.query({ windowId: window.id })
+  } catch {
+    // 标签组元数据不是保存会话的必要条件。
+  }
+
+  const groupKeys = new Map<number, string>()
+  const groupSnapshots = groups.map((group) => {
+    const key = `${window.id}:${group.id}`
+    groupKeys.set(group.id, key)
+    return {
+      key,
+      title: group.title,
+      color: group.color,
+      collapsed: group.collapsed,
+    }
+  })
+
+  return {
+    key: String(window.id),
+    focused: window.focused,
+    state: toSessionWindowState(window.state),
+    groups: groupSnapshots,
+    tabs: (window.tabs ?? []).flatMap((tab) => {
+      if (!tab.url) return []
+      return [{
+        title: tab.title || tab.url,
+        url: tab.url,
+        pinned: tab.pinned,
+        index: tab.index,
+        groupKey: tab.groupId >= 0 ? groupKeys.get(tab.groupId) : undefined,
+      }]
+    }),
   }
 }
 
@@ -89,6 +144,116 @@ export const browserGateway = {
       return
     }
     await chrome.bookmarks.removeTree(node.id)
+  },
+
+  async captureSession(scope: 'current' | 'all'): Promise<SessionWindowSnapshot[]> {
+    const windows = scope === 'current'
+      ? [await chrome.windows.getCurrent({ populate: true })]
+      : await chrome.windows.getAll({ populate: true, windowTypes: ['normal'] })
+    const snapshots = await Promise.all(windows.map(captureWindow))
+    return snapshots.filter((window): window is SessionWindowSnapshot => window !== null)
+  },
+
+  async restoreSession(session: SessionRecord): Promise<SessionRestoreResult> {
+    const result: SessionRestoreResult = {
+      restoredTabs: 0,
+      skippedTabs: 0,
+      createdWindows: 0,
+      skippedGroups: 0,
+    }
+    let firstCreatedWindowId: number | undefined
+
+    for (const windowSnapshot of session.windows) {
+      const [firstTab, ...remainingTabs] = windowSnapshot.tabs
+      if (!firstTab) continue
+
+      let createdWindow: chrome.windows.Window
+      try {
+        createdWindow = await chrome.windows.create({ url: firstTab.url, focused: false })
+      } catch {
+        result.skippedTabs += windowSnapshot.tabs.length
+        continue
+      }
+
+      const createdWindowId = createdWindow.id
+      const firstCreatedTabId = createdWindow.tabs?.[0]?.id
+      if (createdWindowId === undefined || firstCreatedTabId === undefined) {
+        result.skippedTabs += windowSnapshot.tabs.length
+        continue
+      }
+
+      firstCreatedWindowId ??= createdWindowId
+      result.createdWindows += 1
+      result.restoredTabs += 1
+
+      try {
+        await chrome.tabs.update(firstCreatedTabId, { pinned: firstTab.pinned })
+      } catch {
+        // 标签已经恢复；固定状态失败不应把它重新计为跳过。
+      }
+
+      const createdByGroup = new Map<string, number[]>()
+      if (firstTab.groupKey) createdByGroup.set(firstTab.groupKey, [firstCreatedTabId])
+
+      for (const tab of remainingTabs) {
+        try {
+          const created = await chrome.tabs.create({
+            windowId: createdWindowId,
+            url: tab.url,
+            active: false,
+            pinned: tab.pinned,
+          })
+          if (created.id === undefined) {
+            result.skippedTabs += 1
+            continue
+          }
+          result.restoredTabs += 1
+          if (tab.groupKey) {
+            createdByGroup.set(tab.groupKey, [
+              ...(createdByGroup.get(tab.groupKey) ?? []),
+              created.id,
+            ])
+          }
+        } catch {
+          result.skippedTabs += 1
+        }
+      }
+
+      for (const group of windowSnapshot.groups) {
+        const tabIds = createdByGroup.get(group.key) ?? []
+        if (tabIds.length === 0) continue
+        try {
+          const groupId = await chrome.tabs.group({
+            tabIds,
+            createProperties: { windowId: createdWindowId },
+          })
+          await chrome.tabGroups.update(groupId, {
+            title: group.title,
+            color: group.color,
+            collapsed: group.collapsed,
+          })
+        } catch {
+          result.skippedGroups += 1
+        }
+      }
+
+      if (windowSnapshot.state !== 'normal' && windowSnapshot.state !== 'locked') {
+        try {
+          await chrome.windows.update(createdWindowId, { state: windowSnapshot.state })
+        } catch {
+          // 窗口和标签已经恢复；显示状态失败只降级，不重复计数。
+        }
+      }
+    }
+
+    if (firstCreatedWindowId !== undefined) {
+      try {
+        await chrome.windows.update(firstCreatedWindowId, { focused: true })
+      } catch {
+        // 聚焦失败不影响恢复结果。
+      }
+    }
+    return result
   },
 
   async executeOperation(operation: AiOperation): Promise<void> {
