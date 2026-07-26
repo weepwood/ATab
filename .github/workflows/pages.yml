@@ -1,0 +1,106 @@
+name: Deploy GitHub Pages Demo
+
+on:
+  pull_request:
+    paths:
+      - 'site/**'
+      - '.github/workflows/pages.yml'
+  push:
+    branches:
+      - main
+    paths:
+      - 'site/**'
+      - '.github/workflows/pages.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+  issues: write
+  pull-requests: write
+
+concurrency:
+  group: github-pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Validate static demo
+        run: |
+          set -euo pipefail
+          test -f site/index.html
+          test -f site/styles.css
+          test -f site/app.js
+          test -f site/404.html
+          test -f site/.nojekyll
+          node --check site/app.js
+          if grep -RInE '(sk-[A-Za-z0-9_-]{20,}|BEGIN [A-Z ]*PRIVATE KEY|SUPABASE_SERVICE_ROLE|AI_API_KEY[[:space:]]*=)' site; then
+            echo 'Pages 静态文件包含疑似敏感信息'
+            exit 1
+          fi
+          if grep -RInE '(src|href)="/' site/index.html; then
+            echo 'Pages 演示使用了不兼容仓库子路径的绝对资源地址'
+            exit 1
+          fi
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: site
+
+  deploy:
+    if: github.event_name != 'pull_request'
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      page_url: ${{ steps.deployment.outputs.page_url }}
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
+
+  report:
+    if: ${{ always() && github.event_name == 'push' }}
+    needs: [build, deploy]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
+    steps:
+      - name: Report deployment result to PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BUILD_RESULT: ${{ needs.build.result }}
+          DEPLOY_RESULT: ${{ needs.deploy.result }}
+          PAGE_URL: ${{ needs.deploy.outputs.page_url }}
+        run: |
+          set -euo pipefail
+          page_url="${PAGE_URL:-https://weepwood.github.io/ATab/}"
+          run_url="https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          body=$(cat <<EOF
+          ### GitHub Pages 部署报告
+
+          - 静态页面构建：\`${BUILD_RESULT}\`
+          - Pages 部署：\`${DEPLOY_RESULT}\`
+          - 访问地址：${page_url}
+          - 提交：\`${GITHUB_SHA}\`
+          - 工作流运行：${run_url}
+          EOF
+          )
+          gh api --method POST "repos/${GITHUB_REPOSITORY}/issues/38/comments" -f body="$body"
