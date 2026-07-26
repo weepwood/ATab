@@ -1,6 +1,7 @@
 import { db } from './db'
 import type {
   ResourceContentRecord,
+  ResourceEmbeddingRecord,
   ResourceRecord,
   ResourceSummaryRecord,
   TabView,
@@ -13,6 +14,7 @@ export interface ResourceLibraryItem {
   resource: ResourceRecord
   content: ResourceContentRecord
   summary?: ResourceSummaryRecord
+  embedding?: ResourceEmbeddingRecord
 }
 
 export async function captureAndStoreResource(tab: TabView): Promise<ResourceLibraryItem> {
@@ -22,7 +24,10 @@ export async function captureAndStoreResource(tab: TabView): Promise<ResourceLib
   const contentHash = await sha256(snapshot.text)
   const existing = await db.resources.where('canonicalUrl').equals(canonicalUrl).first()
   const resourceId = existing?.id ?? crypto.randomUUID()
-  const existingSummary = await db.resourceSummaries.get(resourceId)
+  const [existingSummary, existingEmbedding] = await Promise.all([
+    db.resourceSummaries.get(resourceId),
+    db.resourceEmbeddings.get(resourceId),
+  ])
 
   const resource: ResourceRecord = {
     id: resourceId,
@@ -37,7 +42,7 @@ export async function captureAndStoreResource(tab: TabView): Promise<ResourceLib
     contentLength: snapshot.text.length,
     capturedAt: now,
     summaryStatus: existingSummary?.contentHash === contentHash ? 'ready' : 'not-requested',
-    embeddingStatus: existing?.embeddingStatus ?? 'not-requested',
+    embeddingStatus: existingEmbedding?.contentHash === contentHash ? 'ready' : 'not-requested',
     firstSeenAt: existing?.firstSeenAt ?? now,
     lastSeenAt: now,
   }
@@ -55,20 +60,32 @@ export async function captureAndStoreResource(tab: TabView): Promise<ResourceLib
     await db.resources.put(resource)
     await db.resourceContents.put(content)
   })
-  return { resource, content, summary: existingSummary }
+  return {
+    resource,
+    content,
+    summary: existingSummary,
+    embedding: existingEmbedding,
+  }
 }
 
 export async function listResourceLibraryItems(): Promise<ResourceLibraryItem[]> {
-  const [resources, contents, summaries] = await Promise.all([
+  const [resources, contents, summaries, embeddings] = await Promise.all([
     db.resources.orderBy('capturedAt').reverse().toArray(),
     db.resourceContents.toArray(),
     db.resourceSummaries.toArray(),
+    db.resourceEmbeddings.toArray(),
   ])
   const contentById = new Map(contents.map((content) => [content.resourceId, content]))
   const summaryById = new Map(summaries.map((summary) => [summary.resourceId, summary]))
+  const embeddingById = new Map(embeddings.map((embedding) => [embedding.resourceId, embedding]))
   return resources.flatMap((resource) => {
     const content = contentById.get(resource.id)
-    return content ? [{ resource, content, summary: summaryById.get(resource.id) }] : []
+    return content ? [{
+      resource,
+      content,
+      summary: summaryById.get(resource.id),
+      embedding: embeddingById.get(resource.id),
+    }] : []
   })
 }
 
@@ -125,7 +142,9 @@ export async function deleteResourceSnapshot(resourceId: string): Promise<void> 
     db.resources,
     db.resourceContents,
     db.resourceSummaries,
+    db.resourceEmbeddings,
     async () => {
+      await db.resourceEmbeddings.delete(resourceId)
       await db.resourceSummaries.delete(resourceId)
       await db.resourceContents.delete(resourceId)
       await db.resources.delete(resourceId)
