@@ -6,6 +6,7 @@ import type {
   ResourceRecord,
 } from './domain'
 import type { ResourceLibraryItem } from './resourceIndex'
+import type { UnifiedSearchResult } from './unifiedSearch'
 
 const SEMANTIC_SEARCH_ENABLED_KEY = 'semantic-search-enabled'
 const MIN_SEMANTIC_SIMILARITY = 0.05
@@ -113,6 +114,36 @@ export async function searchSemanticResources(query: string): Promise<SemanticRe
     if (!Number.isFinite(similarity) || similarity < MIN_SEMANTIC_SIMILARITY) return []
     return [{ resource, similarity }]
   }).sort((a, b) => b.similarity - a.similarity).slice(0, 40)
+}
+
+export function mergeSemanticSearchResults(
+  keywordResults: UnifiedSearchResult[],
+  semanticResults: UnifiedSearchResult[],
+  limit = 120,
+): UnifiedSearchResult[] {
+  const merged = new Map(keywordResults.map((result) => [result.id, result]))
+
+  for (const semantic of semanticResults) {
+    const existing = merged.get(semantic.id)
+    if (!existing) {
+      merged.set(semantic.id, semantic)
+      continue
+    }
+    const matchedFields = [...new Set([
+      ...existing.matchedFields,
+      ...semantic.matchedFields,
+    ])]
+    merged.set(semantic.id, {
+      ...existing,
+      subtitle: semantic.subtitle,
+      score: Math.max(existing.score, semantic.score) + 20,
+      matchedFields,
+    })
+  }
+
+  return [...merged.values()]
+    .sort((a, b) => b.score - a.score || (b.updatedAt ?? 0) - (a.updatedAt ?? 0))
+    .slice(0, Math.max(1, Math.min(limit, 500)))
 }
 
 export function cosineSimilarity(left: number[], right: number[]): number {
