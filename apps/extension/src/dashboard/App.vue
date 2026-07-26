@@ -4,9 +4,10 @@ import TabsView from './TabsView.vue'
 import SessionsView from './SessionsView.vue'
 import BookmarksView from './BookmarksView.vue'
 import CloudBookmarksView from './CloudBookmarksView.vue'
+import HistoryView from './HistoryView.vue'
 import SyncView from './SyncView.vue'
 
-type WorkspaceView = 'tabs' | 'sessions' | 'bookmarks' | 'cloud-bookmarks' | 'sync'
+type WorkspaceView = 'tabs' | 'sessions' | 'bookmarks' | 'cloud-bookmarks' | 'history' | 'sync'
 
 const activeView = ref<WorkspaceView>('tabs')
 const optionsUrl = chrome.runtime.getURL('src/options/index.html')
@@ -21,8 +22,8 @@ const optionsUrl = chrome.runtime.getURL('src/options/index.html')
         <button :class="{ active: activeView === 'sessions' }" @click="activeView = 'sessions'">会话</button>
         <button :class="{ active: activeView === 'bookmarks' }" @click="activeView = 'bookmarks'">书签</button>
         <button :class="{ active: activeView === 'cloud-bookmarks' }" @click="activeView = 'cloud-bookmarks'">云收藏</button>
+        <button :class="{ active: activeView === 'history' }" @click="activeView = 'history'">历史</button>
         <button :class="{ active: activeView === 'sync' }" @click="activeView = 'sync'">同步</button>
-        <button disabled>历史</button>
       </nav>
       <a :href="optionsUrl">设置</a>
     </aside>
@@ -31,6 +32,7 @@ const optionsUrl = chrome.runtime.getURL('src/options/index.html')
     <SessionsView v-else-if="activeView === 'sessions'" />
     <BookmarksView v-else-if="activeView === 'bookmarks'" />
     <CloudBookmarksView v-else-if="activeView === 'cloud-bookmarks'" />
+    <HistoryView v-else-if="activeView === 'history'" />
     <SyncView v-else />
   </main>
 </template>
@@ -42,7 +44,6 @@ const optionsUrl = chrome.runtime.getURL('src/options/index.html')
 nav { display: grid; gap: 8px; width: 100%; }
 nav button, .sidebar a { border: 0; background: transparent; color: var(--muted); border-radius: 12px; padding: 10px 4px; text-align: center; text-decoration: none; }
 nav button.active { background: var(--primary-soft); color: var(--primary); }
-nav button:disabled { cursor: not-allowed; opacity: 0.46; }
 .sidebar a { margin-top: auto; }
 @media (max-width: 760px) {
   .layout { grid-template-columns: 1fr; }
