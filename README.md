@@ -2,7 +2,7 @@
 
 ATab 是一个本地优先的 AI 浏览器工作台，用于统一管理标签页、标签组、书签、会话、浏览历史和网页知识。
 
-当前仓库正在建立浏览器数据底座、安全 AI 操作协议、可替换模型服务、增量云同步、独立云收藏库、本地统一搜索、网页资源索引、用户确认式 AI 摘要与本地混合语义检索。
+当前仓库正在建立浏览器数据底座、安全 AI 操作协议、可替换模型服务、增量云同步、独立云收藏库、本地统一搜索、网页资源索引、用户确认式 AI 摘要、本地混合语义检索、安全发布与部署诊断。
 
 ## 产品目标
 
@@ -41,13 +41,16 @@ ATab 是一个本地优先的 AI 浏览器工作台，用于统一管理标签�
 - AI 计划风险预览、用户确认和执行前目标 URL 重校验。
 - 按具体 AI 服务来源申请可撤销的主机权限。
 - Supabase 邮箱密码登录、Token 刷新和退出。
+- AI API Supabase 用户认证、用户级限流和不含原文的脱敏审计。
 - 本地同步 Outbox、乐观版本号、幂等 changeId 和冲突队列。
 - PostgreSQL/Supabase 设备表、同步实体、顺序日志、RLS 与 RPC。
 - 手动会话和云收藏的跨设备推送、增量拉取和每 15 分钟后台同步。
 - URL 规范化和追踪参数清理。
 - Dexie/IndexedDB 本地数据库、正文快照表、摘要表和语义向量表。
 - Chrome 109 核心路径兼容，不依赖 Side Panel API。
-- CI：类型检查、测试和构建。
+- 可复现扩展 ZIP、SHA-256、产物安全扫描和真实 Chromium 烟雾测试。
+- API `/ready`、启动安全门禁和被动/主动部署 Doctor。
+- CI：类型检查、单元测试、构建、发布产物与真实扩展加载。
 
 ## 技术栈
 
@@ -56,7 +59,7 @@ ATab 是一个本地优先的 AI 浏览器工作台，用于统一管理标签�
 - Dexie / IndexedDB
 - Fastify
 - PostgreSQL / Supabase Auth / RLS
-- Vitest
+- Vitest、Node Test Runner、Playwright
 - 后续：pgvector、Supabase Realtime/Storage
 
 ## 本地开发
@@ -79,12 +82,26 @@ pnpm dev:extension
 pnpm dev:api
 ```
 
+被动部署诊断：
+
+```bash
+pnpm doctor
+```
+
+使用固定合成数据验证三类 AI 接口：
+
+```bash
+pnpm doctor:active
+```
+
 完整验证：
 
 ```bash
 pnpm typecheck
 pnpm test
 pnpm build
+node scripts/validate-extension.mjs
+python3 scripts/package-extension.py
 ```
 
 随后在 Chrome/Edge 的扩展管理页面中启用开发者模式，加载 `apps/extension/dist`。
@@ -95,6 +112,7 @@ pnpm build
 - [数据模型](docs/data-model.md)
 - [AI 安全与执行协议](docs/ai-security.md)
 - [AI Provider 与部署](docs/ai-provider.md)
+- [AI API 用户认证、限流与审计](docs/ai-api-production-security.md)
 - [增量云同步](docs/cloud-sync.md)
 - [云收藏与原生书签导入](docs/cloud-bookmarks.md)
 - [浏览历史工作台](docs/history-workspace.md)
@@ -102,6 +120,8 @@ pnpm build
 - [本地网页资源索引](docs/resource-index.md)
 - [用户主动触发的 AI 网页摘要](docs/resource-ai-summary.md)
 - [用户授权的本地语义索引与混合搜索](docs/semantic-search.md)
+- [扩展发布包与 Chromium 烟雾测试](docs/release-and-smoke-testing.md)
+- [部署就绪诊断与真实服务验收](docs/deployment-doctor.md)
 - [实施路线图](docs/roadmap.md)
 - [AI 协作指南](AGENTS.md)
 

@@ -1,8 +1,12 @@
 import { buildApp } from './app'
 import { loadConfig } from './config'
+import { assertSafeStartupConfig } from './readiness'
+import { registerReadinessRoute } from './readinessRoute'
 
 const config = loadConfig()
+assertSafeStartupConfig(config)
 const app = await buildApp({ config, logger: true })
+registerReadinessRoute(app, config)
 
 const shutdown = async (signal: string): Promise<void> => {
   app.log.info({ signal }, '正在关闭 ATab API')

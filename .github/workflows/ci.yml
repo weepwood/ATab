@@ -8,6 +8,7 @@ on:
 jobs:
   verify:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -30,5 +31,102 @@ jobs:
         run: |
           cat typecheck.log
           exit 1
-      - run: pnpm test
-      - run: pnpm build
+      - name: Tests
+        id: tests
+        continue-on-error: true
+        run: pnpm test > test.log 2>&1
+      - name: Upload test diagnostics
+        if: steps.tests.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-log
+          path: test.log
+      - name: Report test failure
+        if: steps.tests.outcome == 'failure'
+        run: |
+          cat test.log
+          exit 1
+      - name: Production build
+        run: pnpm build
+      - name: Mock API deployment doctor integration
+        id: doctor
+        continue-on-error: true
+        env:
+          HOST: 127.0.0.1
+          PORT: 8787
+          ATAB_AI_PROVIDER: mock
+          AI_AUTH_MODE: disabled
+          AI_RATE_LIMIT_PER_MINUTE: 60
+        run: |
+          set -euo pipefail
+          pnpm --filter @atab/api start > api-doctor.log 2>&1 &
+          api_pid=$!
+          trap 'kill "$api_pid" 2>/dev/null || true; wait "$api_pid" 2>/dev/null || true' EXIT
+
+          ready=0
+          for _ in $(seq 1 40); do
+            if curl --fail --silent http://127.0.0.1:8787/health >/dev/null; then
+              ready=1
+              break
+            fi
+            sleep 0.25
+          done
+          if [ "$ready" -ne 1 ]; then
+            cat api-doctor.log
+            exit 1
+          fi
+
+          set +e
+          node scripts/doctor.mjs --json > doctor-passive.json
+          passive_code=$?
+          node scripts/doctor.mjs --active --json > doctor-active.json
+          active_code=$?
+          set -e
+
+          printf '{"passive":%s,"active":%s}\n' "$passive_code" "$active_code" > doctor-exit-codes.json
+
+          if [ "$passive_code" -ne 0 ] && [ "$passive_code" -ne 2 ]; then
+            cat doctor-passive.json
+            cat api-doctor.log
+            exit "$passive_code"
+          fi
+          if [ "$active_code" -ne 0 ] && [ "$active_code" -ne 2 ]; then
+            cat doctor-active.json
+            cat api-doctor.log
+            exit "$active_code"
+          fi
+
+          node --input-type=module <<'NODE'
+          import { readFile } from 'node:fs/promises'
+          const passive = JSON.parse(await readFile('doctor-passive.json', 'utf8'))
+          const active = JSON.parse(await readFile('doctor-active.json', 'utf8'))
+          if (!['pass', 'warning'].includes(passive.status)) throw new Error('被动 Doctor 状态无效')
+          if (!['pass', 'warning'].includes(active.status)) throw new Error('主动 Doctor 状态无效')
+          for (const id of ['active-agent-plan', 'active-resource-summary', 'active-embeddings']) {
+            const result = active.checks.find((item) => item.id === id)
+            if (!result || result.status !== 'pass') throw new Error(`主动检查失败：${id}`)
+          }
+          const serialized = JSON.stringify({ passive, active })
+          for (const forbidden of ['authorization', 'accessToken', 'apiKey', 'userId', 'email']) {
+            if (serialized.includes(forbidden)) throw new Error(`Doctor 输出包含禁止字段：${forbidden}`)
+          }
+          NODE
+      - name: Upload Doctor integration diagnostics
+        if: steps.doctor.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: doctor-integration-log
+          path: |
+            api-doctor.log
+            doctor-passive.json
+            doctor-active.json
+            doctor-exit-codes.json
+          if-no-files-found: ignore
+      - name: Report Doctor integration failure
+        if: steps.doctor.outcome == 'failure'
+        run: |
+          cat doctor-exit-codes.json 2>/dev/null || true
+          cat doctor-passive.json 2>/dev/null || true
+          cat doctor-active.json 2>/dev/null || true
+          cat api-doctor.log 2>/dev/null || true
+          exit 1
