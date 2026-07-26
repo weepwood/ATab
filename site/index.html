@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="ATab 本地优先 AI 浏览器工作台的 GitHub Pages 交互演示。" />
+  <meta name="theme-color" content="#f7f8fb" />
+  <title>ATab · AI 浏览器工作台</title>
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar" aria-label="主导航">
+      <a class="brand" href="./" aria-label="ATab 首页">A</a>
+      <nav class="nav-list">
+        <button class="nav-item" data-view="search"><span>⌕</span><b>搜索</b></button>
+        <button class="nav-item active" data-view="tabs"><span>▣</span><b>标签页</b></button>
+        <button class="nav-item" data-view="sessions"><span>◫</span><b>会话</b></button>
+        <button class="nav-item" data-view="bookmarks"><span>◇</span><b>书签</b></button>
+        <button class="nav-item" data-view="resources"><span>▤</span><b>资料</b></button>
+        <button class="nav-item" data-view="sync"><span>↻</span><b>同步</b></button>
+      </nav>
+      <a class="repo-link" href="https://github.com/weepwood/ATab" target="_blank" rel="noreferrer">GitHub</a>
+    </aside>
+
+    <main class="workspace">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">LOCAL-FIRST BROWSER WORKSPACE</p>
+          <h1 id="page-title">标签页工作台</h1>
+        </div>
+        <div class="top-actions">
+          <span class="demo-badge">网页演示模式</span>
+          <button id="theme-toggle" class="icon-button" type="button" aria-label="切换深浅主题">◐</button>
+        </div>
+      </header>
+
+      <section class="notice" aria-label="演示说明">
+        <div>
+          <strong>这是静态交互演示。</strong>
+          <span>标签页、书签、历史和同步数据均为本地模拟数据，不会访问你的浏览器。</span>
+        </div>
+        <a href="https://github.com/weepwood/ATab" target="_blank" rel="noreferrer">查看扩展源码 →</a>
+      </section>
+
+      <section class="command-bar">
+        <label class="search-box">
+          <span>⌕</span>
+          <input id="global-search" type="search" placeholder="搜索标签页、书签、资料和会话…" autocomplete="off" />
+          <kbd>⌘ K</kbd>
+        </label>
+        <button id="ai-organize" class="primary-button" type="button">✦ AI 整理建议</button>
+      </section>
+
+      <section id="summary-grid" class="summary-grid" aria-label="数据概览"></section>
+      <section id="content" class="content" aria-live="polite"></section>
+    </main>
+  </div>
+
+  <dialog id="ai-dialog" class="ai-dialog">
+    <form method="dialog">
+      <div class="dialog-head">
+        <div>
+          <p class="eyebrow">STRUCTURED ACTION PLAN</p>
+          <h2>AI 整理建议</h2>
+        </div>
+        <button class="icon-button" value="cancel" aria-label="关闭">×</button>
+      </div>
+      <div class="plan-card">
+        <span class="risk reversible">可撤销</span>
+        <h3>把开发相关页面归入“开发”分组</h3>
+        <p>检测到 4 个 GitHub、文档与 API 页面。演示模式只生成计划，不会调用浏览器 API。</p>
+        <ul>
+          <li>创建标签组：开发</li>
+          <li>移动 4 个模拟标签页</li>
+          <li>保留当前活动标签页</li>
+        </ul>
+      </div>
+      <div class="dialog-actions">
+        <button class="secondary-button" value="cancel">取消</button>
+        <button id="confirm-plan" class="primary-button" value="default">确认演示操作</button>
+      </div>
+    </form>
+  </dialog>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <script type="module" src="./app.js"></script>
+</body>
+</html>
