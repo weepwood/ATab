@@ -1,12 +1,15 @@
 export type AiProviderMode = 'mock' | 'openai-compatible'
+export type AiAuthMode = 'disabled' | 'supabase'
 
 export interface ApiConfig {
   provider: AiProviderMode
+  authMode?: AiAuthMode
   baseUrl: string
   apiKey?: string
   model?: string
   embeddingModel?: string
   requestTimeoutMs: number
+  rateLimitPerMinute?: number
   allowedOrigins: string[]
   supabaseUrl?: string
   supabaseAnonKey?: string
@@ -18,14 +21,17 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ApiConfig {
   const provider = env.ATAB_AI_PROVIDER === 'openai-compatible'
     ? 'openai-compatible'
     : 'mock'
+  const authMode = env.AI_AUTH_MODE === 'supabase' ? 'supabase' : 'disabled'
 
   return {
     provider,
+    authMode,
     baseUrl: (env.AI_BASE_URL || 'https://api.openai.com/v1').replace(/\/$/, ''),
     apiKey: env.AI_API_KEY?.trim() || undefined,
     model: env.AI_MODEL?.trim() || undefined,
     embeddingModel: env.AI_EMBEDDING_MODEL?.trim() || undefined,
     requestTimeoutMs: readPositiveInteger(env.AI_REQUEST_TIMEOUT_MS, 30_000),
+    rateLimitPerMinute: readPositiveInteger(env.AI_RATE_LIMIT_PER_MINUTE, 60),
     allowedOrigins: (env.AI_ALLOWED_ORIGINS || '')
       .split(',')
       .map((origin) => origin.trim().replace(/\/$/, ''))

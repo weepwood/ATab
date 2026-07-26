@@ -3,6 +3,7 @@ import {
   type AgentPlanRequest,
 } from '@atab/contracts'
 import type { AiActionPlan, TabView } from '../domain'
+import { getAiAuthorizationHeaders } from './auth'
 import { buildLocalPlan } from './localPlanner'
 
 export type AiProviderMode = 'local' | 'remote'
@@ -81,6 +82,7 @@ async function requestRemotePlan(
   tabs: TabView[],
 ): Promise<AiActionPlan> {
   const normalized = normalizeEndpoint(endpoint)
+  const authorizationHeaders = await getAiAuthorizationHeaders()
   const request: AgentPlanRequest = {
     command,
     locale: 'zh-CN',
@@ -97,7 +99,10 @@ async function requestRemotePlan(
 
   const response = await fetchWithTimeout(`${normalized}/v1/agent/plan`, {
     method: 'POST',
-    headers: { 'content-type': 'application/json' },
+    headers: {
+      'content-type': 'application/json',
+      ...authorizationHeaders,
+    },
     credentials: 'omit',
     body: JSON.stringify(request),
   }, REQUEST_TIMEOUT_MS)
