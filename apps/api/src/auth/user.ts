@@ -22,7 +22,7 @@ export class ConfiguredAiAuthVerifier implements AiAuthVerifier {
   constructor(private readonly config: ApiConfig) {}
 
   async authenticate(authorization?: string): Promise<AiRequestIdentity> {
-    if (this.config.authMode === 'disabled') {
+    if (this.config.authMode !== 'supabase') {
       return { userId: 'local-development', mode: 'disabled' }
     }
     if (!this.config.supabaseUrl || !this.config.supabaseAnonKey) {
@@ -33,11 +33,13 @@ export class ConfiguredAiAuthVerifier implements AiAuthVerifier {
       )
     }
 
+    const supabaseUrl = this.config.supabaseUrl
+    const supabaseAnonKey = this.config.supabaseAnonKey
     const bearer = readBearerAuthorization(authorization)
-    const response = await fetch(`${this.config.supabaseUrl}/auth/v1/user`, {
+    const response = await fetch(`${supabaseUrl}/auth/v1/user`, {
       method: 'GET',
       headers: {
-        apikey: this.config.supabaseAnonKey,
+        apikey: supabaseAnonKey,
         authorization: bearer,
         accept: 'application/json',
       },
@@ -57,11 +59,12 @@ export class ConfiguredAiAuthVerifier implements AiAuthVerifier {
       throw new AiAuthError(502, 'AUTH_INVALID_RESPONSE', 'Supabase 用户响应缺少用户 ID')
     }
 
-    return {
+    const identity: AiRequestIdentity = {
       userId: payload.id,
-      email: typeof payload.email === 'string' ? payload.email : undefined,
       mode: 'supabase',
     }
+    if (typeof payload.email === 'string') identity.email = payload.email
+    return identity
   }
 }
 
