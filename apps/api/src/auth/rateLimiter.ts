@@ -15,13 +15,15 @@ interface RateWindow {
 
 export class InMemoryAiRateLimiter implements AiRateLimiter {
   private readonly windows = new Map<string, RateWindow>()
+  private readonly limit: number
 
   constructor(
-    private readonly limit: number,
+    limit = 60,
     private readonly windowMs = 60_000,
   ) {
     if (!Number.isInteger(limit) || limit < 1) throw new Error('速率限制必须是正整数')
     if (!Number.isInteger(windowMs) || windowMs < 1) throw new Error('速率限制窗口必须是正整数')
+    this.limit = limit
   }
 
   consume(key: string, now = Date.now()): AiRateLimitResult {
