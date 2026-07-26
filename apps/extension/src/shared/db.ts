@@ -8,6 +8,7 @@ import type {
   AiActionPlan,
   CloudBookmarkRecord,
   ResourceContentRecord,
+  ResourceEmbeddingRecord,
   ResourceRecord,
   ResourceSummaryRecord,
   SessionRecord,
@@ -55,6 +56,7 @@ class ATabDatabase extends Dexie {
   resources!: EntityTable<ResourceRecord, 'id'>
   resourceContents!: EntityTable<ResourceContentRecord, 'resourceId'>
   resourceSummaries!: EntityTable<ResourceSummaryRecord, 'resourceId'>
+  resourceEmbeddings!: EntityTable<ResourceEmbeddingRecord, 'resourceId'>
   sessions!: EntityTable<SessionRecord, 'id'>
   cloudBookmarks!: EntityTable<CloudBookmarkRecord, 'id'>
   settings!: EntityTable<SettingRecord, 'key'>
@@ -111,6 +113,19 @@ class ATabDatabase extends Dexie {
       resources: 'id, canonicalUrl, domain, capturedAt, lastSeenAt',
       resourceContents: 'resourceId, capturedAt, contentHash',
       resourceSummaries: 'resourceId, contentHash, updatedAt',
+      sessions: 'id, kind, updatedAt',
+      cloudBookmarks: 'id, canonicalUrl, folder, archived, updatedAt',
+      settings: 'key, updatedAt',
+      actionPlans: 'id, createdAt, risk',
+      syncOutbox: 'id, entityKey, entityType, status, updatedAt',
+      syncVersions: 'key, entityType, entityId',
+      syncMetadata: 'key, updatedAt',
+    })
+    this.version(7).stores({
+      resources: 'id, canonicalUrl, domain, capturedAt, lastSeenAt',
+      resourceContents: 'resourceId, capturedAt, contentHash',
+      resourceSummaries: 'resourceId, contentHash, updatedAt',
+      resourceEmbeddings: 'resourceId, contentHash, model, updatedAt',
       sessions: 'id, kind, updatedAt',
       cloudBookmarks: 'id, canonicalUrl, folder, archived, updatedAt',
       settings: 'key, updatedAt',
