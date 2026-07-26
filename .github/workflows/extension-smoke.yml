@@ -46,8 +46,23 @@ jobs:
       - name: Validate extension artifact
         run: node scripts/validate-extension.mjs
 
+      - name: Verify project version consistency
+        run: |
+          version="$(node -p "require('./apps/extension/dist/manifest.json').version")"
+          node scripts/verify-release-tag.mjs "v${version}"
+
       - name: Package extension ZIP
         run: python3 scripts/package-extension.py
+
+      - name: Verify checksum and reproducible ZIP
+        run: |
+          set -euo pipefail
+          first="$(sha256sum artifacts/atab-extension-*.zip | awk '{print $1}')"
+          (cd artifacts && sha256sum -c atab-extension-*.zip.sha256)
+          python3 scripts/package-extension.py >/tmp/atab-package-second.json
+          second="$(sha256sum artifacts/atab-extension-*.zip | awk '{print $1}')"
+          test "${first}" = "${second}"
+          (cd artifacts && sha256sum -c atab-extension-*.zip.sha256)
 
       - name: Upload extension package
         uses: actions/upload-artifact@v4
