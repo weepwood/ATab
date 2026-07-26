@@ -3,15 +3,13 @@ import { defineStore } from 'pinia'
 import { browserGateway } from '@/shared/browser'
 import type { AiActionPlan, TabView } from '@/shared/domain'
 import { createAiPlan } from '@/shared/ai/provider'
+import {
+  assertPlanFresh,
+  findStalePlanTargetIds,
+  type PlanTargetSnapshot,
+} from '@/shared/ai/planGuard'
 import { getDomain } from '@/shared/url'
 import { db } from '@/shared/db'
-
-interface PlanTargetSnapshot {
-  url: string
-  windowId: number
-}
-
-const PLAN_MAX_AGE_MS = 5 * 60 * 1_000
 
 export const useTabsStore = defineStore('tabs', () => {
   const tabs = ref<TabView[]>([])
@@ -113,20 +111,9 @@ export const useTabsStore = defineStore('tabs', () => {
     planError.value = ''
     let executionStarted = false
     try {
-      const createdAt = new Date(plan.createdAt).getTime()
-      if (!Number.isFinite(createdAt) || Date.now() - createdAt > PLAN_MAX_AGE_MS || createdAt > Date.now() + 60_000) {
-        throw new Error('操作计划已过期，请重新生成')
-      }
-
+      assertPlanFresh(plan)
       const currentTabs = await browserGateway.listTabs()
-      const currentById = new Map(currentTabs.map((tab) => [tab.id, tab]))
-      const staleIds = Object.entries(planTargets.value)
-        .filter(([id, expected]) => {
-          const current = currentById.get(Number(id))
-          return !current || current.url !== expected.url || current.windowId !== expected.windowId
-        })
-        .map(([id]) => Number(id))
-      if (staleIds.length > 0) {
+      if (findStalePlanTargetIds(planTargets.value, currentTabs).length > 0) {
         throw new Error('部分目标标签已关闭、网址改变或移到其他窗口，请重新生成计划')
       }
 
