@@ -41,19 +41,21 @@ export function createAiAuditEvent(input: {
   now?: number
 }): AiAuditEvent {
   const now = input.now ?? Date.now()
-  return {
+  const event: AiAuditEvent = {
     requestId: input.requestId,
     userId: input.userId,
     route: input.route,
     provider: input.provider,
-    model: input.model,
     inputCount: clampNonNegativeInteger(input.inputCount),
     characterCount: clampNonNegativeInteger(input.characterCount),
     status: input.status,
     durationMs: Math.max(0, Math.round(now - input.startedAt)),
-    errorCode: input.errorCode,
     createdAt: new Date(now).toISOString(),
   }
+
+  if (input.model) event.model = input.model
+  if (input.errorCode) event.errorCode = input.errorCode
+  return event
 }
 
 function clampNonNegativeInteger(value: number): number {
