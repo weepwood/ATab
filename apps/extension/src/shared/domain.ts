@@ -11,6 +11,17 @@ export interface TabView {
   muted: boolean
 }
 
+export interface BookmarkNodeView {
+  id: string
+  parentId?: string
+  index?: number
+  title: string
+  url?: string
+  dateAdded?: number
+  dateGroupModified?: number
+  children: BookmarkNodeView[]
+}
+
 export interface ResourceRecord {
   id: string
   originalUrl: string
