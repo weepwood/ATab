@@ -5,6 +5,7 @@ import {
   assertSafeStartupConfig,
   createReadinessReport,
   isLoopbackHost,
+  isSafeAllowedOrigin,
   isSecureOrLoopbackHttpUrl,
 } from '../src/readiness'
 import { registerReadinessRoute } from '../src/readinessRoute'
@@ -46,21 +47,7 @@ describe('部署就绪检查', () => {
   })
 
   it('公网部署使用 Supabase 认证和精确 Origin 时可以就绪', () => {
-    const config: ApiConfig = {
-      provider: 'openai-compatible',
-      authMode: 'supabase',
-      baseUrl: 'https://models.example.invalid/v1',
-      apiKey: 'server-only-key',
-      model: 'chat-model',
-      embeddingModel: 'embedding-model',
-      requestTimeoutMs: 30_000,
-      rateLimitPerMinute: 60,
-      allowedOrigins: ['chrome-extension://abcdefghijklmnopabcdefghijklmnop'],
-      supabaseUrl: 'https://project.supabase.co',
-      supabaseAnonKey: 'anon-key',
-      host: '0.0.0.0',
-      port: 8_787,
-    }
+    const config = createPublicConfig()
     const report = createReadinessReport(config)
     expect(report.status).toBe('ready')
     expect(report.checks.cors.restricted).toBe(true)
@@ -68,11 +55,43 @@ describe('部署就绪检查', () => {
     expect(() => assertSafeStartupConfig(config)).not.toThrow()
   })
 
-  it('拒绝公网明文模型服务和带凭据的模型 URL', () => {
+  it('远程 Provider 缺少服务端 Key 时拒绝启动', () => {
+    const config = createPublicConfig()
+    config.apiKey = undefined
+    const report = createReadinessReport(config)
+    expect(report.status).toBe('not-ready')
+    expect(report.checks.provider.code).toBe('provider-key-missing')
+    expect(() => assertSafeStartupConfig(config)).toThrow(/provider-key-missing/)
+  })
+
+  it('拒绝公网明文模型服务、Supabase 和带凭据 URL', () => {
     expect(isSecureOrLoopbackHttpUrl('http://models.example.invalid/v1')).toBe(false)
     expect(isSecureOrLoopbackHttpUrl('https://user:secret@models.example.invalid/v1')).toBe(false)
+    expect(isSecureOrLoopbackHttpUrl('https://models.example.invalid/v1?key=secret')).toBe(false)
     expect(isSecureOrLoopbackHttpUrl('http://127.0.0.1:11434/v1')).toBe(true)
     expect(isSecureOrLoopbackHttpUrl('https://models.example.invalid/v1')).toBe(true)
+
+    const config = createPublicConfig()
+    config.supabaseUrl = 'http://project.supabase.co'
+    const report = createReadinessReport(config)
+    expect(report.status).toBe('not-ready')
+    expect(report.checks.authentication.code).toBe('authentication-transport-insecure')
+    expect(report.checks.sync.code).toBe('sync-transport-insecure')
+  })
+
+  it('只接受精确且安全的浏览器或网页 Origin', () => {
+    expect(isSafeAllowedOrigin('chrome-extension://abcdefghijklmnopabcdefghijklmnop')).toBe(true)
+    expect(isSafeAllowedOrigin('https://workspace.example.invalid')).toBe(true)
+    expect(isSafeAllowedOrigin('http://127.0.0.1:5173')).toBe(true)
+    expect(isSafeAllowedOrigin('https://*.example.invalid')).toBe(false)
+    expect(isSafeAllowedOrigin('https://workspace.example.invalid/path')).toBe(false)
+    expect(isSafeAllowedOrigin('http://workspace.example.invalid')).toBe(false)
+
+    const config = createPublicConfig()
+    config.allowedOrigins = ['https://*.example.invalid']
+    const report = createReadinessReport(config)
+    expect(report.status).toBe('not-ready')
+    expect(report.checks.cors.code).toBe('cors-origin-invalid')
   })
 
   it('只把真正的回环监听地址视为本地', () => {
@@ -119,3 +138,21 @@ describe('部署就绪检查', () => {
     expect(serialized).not.toContain('userId')
   })
 })
+
+function createPublicConfig(): ApiConfig {
+  return {
+    provider: 'openai-compatible',
+    authMode: 'supabase',
+    baseUrl: 'https://models.example.invalid/v1',
+    apiKey: 'server-only-key',
+    model: 'chat-model',
+    embeddingModel: 'embedding-model',
+    requestTimeoutMs: 30_000,
+    rateLimitPerMinute: 60,
+    allowedOrigins: ['chrome-extension://abcdefghijklmnopabcdefghijklmnop'],
+    supabaseUrl: 'https://project.supabase.co',
+    supabaseAnonKey: 'anon-key',
+    host: '0.0.0.0',
+    port: 8_787,
+  }
+}
