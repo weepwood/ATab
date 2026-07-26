@@ -43,6 +43,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ApiConfig {
 
 function normalizeUpstreamUrl(value: string): string {
   const url = new URL(value.trim())
+  if (url.username || url.password) throw new Error('AI_BASE_URL 不得包含账号或密码')
   if (url.protocol !== 'http:' && url.protocol !== 'https:') {
     throw new Error('AI_BASE_URL 仅支持 HTTP 或 HTTPS')
   }
@@ -58,8 +59,8 @@ function normalizeOrigin(value: string): string | null {
   const trimmed = value.trim().replace(/\/$/, '')
   if (!trimmed) return null
   const url = new URL(trimmed)
-  if (url.pathname !== '/' || url.search || url.hash) {
-    throw new Error('AI_ALLOWED_ORIGINS 必须是精确 Origin，不得包含路径、查询或 Hash')
+  if ((url.pathname && url.pathname !== '/') || url.search || url.hash || url.username || url.password) {
+    throw new Error('AI_ALLOWED_ORIGINS 必须是精确 Origin，不得包含路径、查询、Hash 或凭据')
   }
   if (!['http:', 'https:', 'chrome-extension:'].includes(url.protocol)) {
     throw new Error('AI_ALLOWED_ORIGINS 仅支持 HTTP、HTTPS 或 chrome-extension Origin')
