@@ -2,23 +2,32 @@ import { computed, ref } from 'vue'
 import { defineStore } from 'pinia'
 import { browserGateway } from '@/shared/browser'
 import type { AiActionPlan, TabView } from '@/shared/domain'
-import { buildLocalPlan } from '@/shared/ai/localPlanner'
+import { createAiPlan } from '@/shared/ai/provider'
 import { getDomain } from '@/shared/url'
 import { db } from '@/shared/db'
+
+interface PlanTargetSnapshot {
+  url: string
+  windowId: number
+}
+
+const PLAN_MAX_AGE_MS = 5 * 60 * 1_000
 
 export const useTabsStore = defineStore('tabs', () => {
   const tabs = ref<TabView[]>([])
   const selectedIds = ref<number[]>([])
   const query = ref('')
   const loading = ref(false)
+  const planning = ref(false)
+  const executing = ref(false)
+  const planError = ref('')
   const currentPlan = ref<AiActionPlan | null>(null)
+  const planTargets = ref<Record<number, PlanTargetSnapshot>>({})
 
   const filteredTabs = computed(() => {
     const keyword = query.value.trim().toLowerCase()
     if (!keyword) return tabs.value
-    return tabs.value.filter((tab) =>
-      `${tab.title} ${tab.url}`.toLowerCase().includes(keyword),
-    )
+    return tabs.value.filter((tab) => `${tab.title} ${tab.url}`.toLowerCase().includes(keyword))
   })
 
   const groupedTabs = computed(() => {
@@ -61,17 +70,78 @@ export const useTabsStore = defineStore('tabs', () => {
   }
 
   async function createPlan(command: string): Promise<void> {
-    currentPlan.value = buildLocalPlan(command, tabs.value)
-    await db.actionPlans.put(currentPlan.value)
+    const normalizedCommand = command.trim()
+    if (!normalizedCommand) {
+      planError.value = '请输入需要 AI 处理的任务'
+      return
+    }
+
+    planning.value = true
+    planError.value = ''
+    cancelPlan(false)
+    try {
+      const plan = await createAiPlan(normalizedCommand, tabs.value)
+      const targetIds = new Set(plan.operations.flatMap((operation) => operation.tabIds))
+      planTargets.value = Object.fromEntries(
+        tabs.value
+          .filter((tab) => targetIds.has(tab.id))
+          .map((tab) => [tab.id, { url: tab.url, windowId: tab.windowId }]),
+      )
+      if (Object.keys(planTargets.value).length !== targetIds.size) {
+        throw new Error('操作计划包含无法快照的标签，请刷新后重试')
+      }
+      currentPlan.value = plan
+      await db.actionPlans.put(plan)
+    } catch (cause) {
+      cancelPlan(false)
+      planError.value = cause instanceof Error ? cause.message : '生成 AI 计划失败'
+    } finally {
+      planning.value = false
+    }
+  }
+
+  function cancelPlan(clearError = true): void {
+    currentPlan.value = null
+    planTargets.value = {}
+    if (clearError) planError.value = ''
   }
 
   async function executeCurrentPlan(): Promise<void> {
-    if (!currentPlan.value) return
-    for (const operation of currentPlan.value.operations) {
-      await browserGateway.executeOperation(operation)
+    const plan = currentPlan.value
+    if (!plan || executing.value) return
+    executing.value = true
+    planError.value = ''
+    let executionStarted = false
+    try {
+      const createdAt = new Date(plan.createdAt).getTime()
+      if (!Number.isFinite(createdAt) || Date.now() - createdAt > PLAN_MAX_AGE_MS || createdAt > Date.now() + 60_000) {
+        throw new Error('操作计划已过期，请重新生成')
+      }
+
+      const currentTabs = await browserGateway.listTabs()
+      const currentById = new Map(currentTabs.map((tab) => [tab.id, tab]))
+      const staleIds = Object.entries(planTargets.value)
+        .filter(([id, expected]) => {
+          const current = currentById.get(Number(id))
+          return !current || current.url !== expected.url || current.windowId !== expected.windowId
+        })
+        .map(([id]) => Number(id))
+      if (staleIds.length > 0) {
+        throw new Error('部分目标标签已关闭、网址改变或移到其他窗口，请重新生成计划')
+      }
+
+      executionStarted = true
+      for (const operation of plan.operations) {
+        await browserGateway.executeOperation(operation)
+      }
+      cancelPlan()
+      await refresh()
+    } catch (cause) {
+      if (executionStarted) cancelPlan(false)
+      planError.value = cause instanceof Error ? cause.message : '执行 AI 计划失败'
+    } finally {
+      executing.value = false
     }
-    currentPlan.value = null
-    await refresh()
   }
 
   return {
@@ -79,6 +149,9 @@ export const useTabsStore = defineStore('tabs', () => {
     selectedIds,
     query,
     loading,
+    planning,
+    executing,
+    planError,
     currentPlan,
     filteredTabs,
     groupedTabs,
@@ -88,6 +161,7 @@ export const useTabsStore = defineStore('tabs', () => {
     clearSelection,
     closeSelected,
     createPlan,
+    cancelPlan,
     executeCurrentPlan,
   }
 })
