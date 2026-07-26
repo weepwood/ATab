@@ -7,6 +7,7 @@ import {
   createBookmarkSearchDocuments,
   createCloudBookmarkSearchDocuments,
   createHistorySearchDocuments,
+  createResourceSearchDocuments,
   createSessionSearchDocuments,
   createTabSearchDocuments,
   searchUnifiedDocuments,
@@ -49,10 +50,20 @@ export const useUnifiedSearchStore = defineStore('unified-search', () => {
     error.value = ''
     try {
       historyAvailable.value = await hasHistoryPermission()
-      const [tabs, bookmarkTree, cloudBookmarks, sessions, history] = await Promise.all([
+      const [
+        tabs,
+        bookmarkTree,
+        cloudBookmarks,
+        resources,
+        resourceContents,
+        sessions,
+        history,
+      ] = await Promise.all([
         browserGateway.listTabs(),
         browserGateway.listBookmarks(),
         db.cloudBookmarks.toArray(),
+        selectedSources.value.includes('resource') ? db.resources.toArray() : Promise.resolve([]),
+        selectedSources.value.includes('resource') ? db.resourceContents.toArray() : Promise.resolve([]),
         db.sessions.toArray(),
         historyAvailable.value && selectedSources.value.includes('history')
           ? searchBrowserHistory({ query: normalizedQuery, rangeDays: 90, maxResults: 500 })
@@ -64,6 +75,7 @@ export const useUnifiedSearchStore = defineStore('unified-search', () => {
         ...createTabSearchDocuments(tabs),
         ...createBookmarkSearchDocuments(bookmarkTree),
         ...createCloudBookmarkSearchDocuments(cloudBookmarks),
+        ...createResourceSearchDocuments(resources, resourceContents),
         ...createSessionSearchDocuments(sessions),
         ...createHistorySearchDocuments(history),
       ]

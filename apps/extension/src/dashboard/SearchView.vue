@@ -68,6 +68,7 @@ function matchLabel(result: UnifiedSearchResult): string {
       if (field === 'title') return '标题'
       if (field === 'url') return '网址'
       if (field === 'keywords') return '标签/内容'
+      if (field === 'body') return '正文'
       return '说明'
     })
     .join('、')
@@ -94,7 +95,7 @@ function sourceClass(source: UnifiedSearchSource): string {
         <input
           ref="input"
           v-model="store.query"
-          placeholder="搜索标签页、书签、云收藏、会话和浏览历史"
+          placeholder="搜索标签页、书签、云收藏、网页资料、会话和浏览历史"
           autocomplete="off"
           @keydown="onKeydown"
         />
@@ -116,13 +117,13 @@ function sourceClass(source: UnifiedSearchSource): string {
     </section>
 
     <p class="privacy-notice">
-      搜索在扩展本地完成，不发送到 AI 或同步服务。浏览历史只有在你此前授权后才参与检索。
+      搜索在扩展本地完成，不发送到 AI 或同步服务。网页正文仅检索你主动保存的本地快照；浏览历史只有在此前授权后才参与检索。
     </p>
     <p v-if="store.error" class="error-banner">{{ store.error }}</p>
 
     <section v-if="!store.query" class="empty-state surface">
       <strong>输入关键词开始检索</strong>
-      <p>支持多个以空格分隔的关键词；每个关键词都必须在标题、网址、标签、备注或说明中命中。</p>
+      <p>支持多个以空格分隔的关键词；每个关键词都必须在标题、网址、标签、备注、说明或已保存正文中命中。</p>
       <div class="hints">
         <span>↑ ↓ 选择</span>
         <span>Enter 打开</span>
@@ -195,6 +196,7 @@ kbd { padding: 7px 10px; border: 1px solid var(--line); border-radius: 9px; back
 .source-badge { width: fit-content; padding: 5px 8px; border-radius: 8px; background: var(--surface-strong); color: var(--muted); font-size: 12px; }
 .source-tab { color: var(--primary); }
 .source-cloud-bookmark { color: #7b61ff; }
+.source-resource { color: #2563eb; }
 .source-session { color: #9a6700; }
 .source-history { color: #087a6f; }
 .result-main { min-width: 0; display: grid; gap: 3px; }

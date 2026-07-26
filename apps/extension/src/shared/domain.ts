@@ -104,6 +104,8 @@ export interface SessionRestoreResult {
   createdWindows: number
 }
 
+export type ResourceProcessingStatus = 'not-requested' | 'pending' | 'ready' | 'error'
+
 export interface ResourceRecord {
   id: string
   originalUrl: string
@@ -111,8 +113,25 @@ export interface ResourceRecord {
   title: string
   domain: string
   faviconUrl?: string
+  description?: string
+  language?: string
+  contentHash?: string
+  contentLength?: number
+  capturedAt?: string
+  summaryStatus?: ResourceProcessingStatus
+  embeddingStatus?: ResourceProcessingStatus
   firstSeenAt: string
   lastSeenAt: string
+}
+
+export interface ResourceContentRecord {
+  resourceId: string
+  text: string
+  excerpt: string
+  contentHash: string
+  characterCount: number
+  wordCount: number
+  capturedAt: string
 }
 
 export type AiOperation = AgentOperation

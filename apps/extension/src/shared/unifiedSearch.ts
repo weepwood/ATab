@@ -2,6 +2,8 @@ import type {
   BookmarkNodeView,
   CloudBookmarkRecord,
   HistoryEntry,
+  ResourceContentRecord,
+  ResourceRecord,
   SessionRecord,
   TabView,
 } from './domain'
@@ -12,6 +14,7 @@ export const UNIFIED_SEARCH_SOURCES = [
   'tab',
   'bookmark',
   'cloud-bookmark',
+  'resource',
   'session',
   'history',
 ] as const
@@ -28,13 +31,14 @@ export interface UnifiedSearchDocument {
   subtitle: string
   url?: string
   keywords: string[]
+  body?: string
   updatedAt?: number
   active?: boolean
 }
 
 export interface UnifiedSearchResult extends UnifiedSearchDocument {
   score: number
-  matchedFields: Array<'title' | 'url' | 'keywords' | 'subtitle'>
+  matchedFields: Array<'title' | 'url' | 'keywords' | 'subtitle' | 'body'>
 }
 
 export interface UnifiedSearchOptions {
@@ -43,8 +47,11 @@ export interface UnifiedSearchOptions {
   now?: number
 }
 
+const RESOURCE_SEARCH_TEXT_LIMIT = 50_000
+
 const SOURCE_BOOST: Record<UnifiedSearchSource, number> = {
   tab: 24,
+  resource: 22,
   'cloud-bookmark': 20,
   bookmark: 16,
   session: 12,
@@ -121,6 +128,33 @@ export function createCloudBookmarkSearchDocuments(
   }))
 }
 
+export function createResourceSearchDocuments(
+  resources: ResourceRecord[],
+  contents: ResourceContentRecord[],
+): UnifiedSearchDocument[] {
+  const contentById = new Map(contents.map((content) => [content.resourceId, content]))
+  return resources.flatMap((resource) => {
+    const content = contentById.get(resource.id)
+    if (!content) return []
+    return [{
+      id: `resource:${resource.id}`,
+      source: 'resource' as const,
+      targetId: resource.id,
+      action: 'open-url' as const,
+      title: resource.title,
+      subtitle: `本地网页资料 · ${resource.domain}`,
+      url: resource.originalUrl,
+      keywords: [
+        resource.domain,
+        resource.description ?? '',
+        resource.language ?? '',
+      ],
+      body: content.text.slice(0, RESOURCE_SEARCH_TEXT_LIMIT),
+      updatedAt: Date.parse(content.capturedAt),
+    }]
+  })
+}
+
 export function createSessionSearchDocuments(
   sessions: SessionRecord[],
 ): UnifiedSearchDocument[] {
@@ -163,6 +197,7 @@ export function sourceLabel(source: UnifiedSearchSource): string {
   if (source === 'tab') return '标签页'
   if (source === 'bookmark') return '原生书签'
   if (source === 'cloud-bookmark') return '云收藏'
+  if (source === 'resource') return '网页资料'
   if (source === 'session') return '会话'
   return '浏览历史'
 }
@@ -177,6 +212,7 @@ function scoreDocument(
   const url = normalizeSearchText(document.url ?? '')
   const subtitle = normalizeSearchText(document.subtitle)
   const keywords = normalizeSearchText(document.keywords.join(' '))
+  const body = normalizeSearchText(document.body ?? '')
   const matchedFields = new Set<UnifiedSearchResult['matchedFields'][number]>()
   let score = SOURCE_BOOST[document.source]
 
@@ -204,6 +240,10 @@ function scoreDocument(
     if (subtitle.includes(token)) {
       tokenScore = Math.max(tokenScore, 24)
       matchedFields.add('subtitle')
+    }
+    if (body.includes(token)) {
+      tokenScore = Math.max(tokenScore, 18)
+      matchedFields.add('body')
     }
     if (tokenScore === 0) return null
     score += tokenScore
