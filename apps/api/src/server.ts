@@ -1,7 +1,9 @@
 import { buildApp } from './app'
 import { loadConfig } from './config'
+import { assertSafeStartupConfig } from './readiness'
 
 const config = loadConfig()
+assertSafeStartupConfig(config)
 const app = await buildApp({ config, logger: true })
 
 const shutdown = async (signal: string): Promise<void> => {
