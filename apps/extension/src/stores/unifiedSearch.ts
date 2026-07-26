@@ -5,6 +5,7 @@ import { db } from '@/shared/db'
 import { hasHistoryPermission, searchBrowserHistory } from '@/shared/history'
 import {
   getSemanticSearchEnabled,
+  mergeSemanticSearchResults,
   searchSemanticResources,
   setSemanticSearchEnabled,
 } from '@/shared/semanticSearch'
@@ -130,7 +131,7 @@ export const useUnifiedSearchStore = defineStore('unified-search', () => {
   }
 
   async function runSemanticSearch(): Promise<void> {
-    const normalizedQuery = query.value.normalize('NFKC').replace(/\s+/g, ' ').trim()
+    const normalizedQuery = normalizeSemanticQuery(query.value)
     if (!semanticEnabled.value) throw new Error('语义搜索尚未启用')
     if (!selectedSources.value.includes('resource')) {
       throw new Error('请先启用“网页资料”搜索来源')
@@ -143,7 +144,10 @@ export const useUnifiedSearchStore = defineStore('unified-search', () => {
     semanticMatchCount.value = 0
     try {
       const matches = await searchSemanticResources(normalizedQuery)
-      if (generation !== semanticGeneration || query.value.trim() !== normalizedQuery) return
+      if (
+        generation !== semanticGeneration
+        || normalizeSemanticQuery(query.value) !== normalizedQuery
+      ) return
 
       const [resources, contents] = await Promise.all([
         db.resources.toArray(),
@@ -165,7 +169,7 @@ export const useUnifiedSearchStore = defineStore('unified-search', () => {
         }]
       })
 
-      results.value = mergeSemanticResults(results.value, semanticResults)
+      results.value = mergeSemanticSearchResults(results.value, semanticResults)
       semanticMatchCount.value = semanticResults.length
       selectedIndex.value = results.value.length > 0 ? 0 : -1
     } catch (cause) {
@@ -252,31 +256,6 @@ export const useUnifiedSearchStore = defineStore('unified-search', () => {
   }
 })
 
-function mergeSemanticResults(
-  keywordResults: UnifiedSearchResult[],
-  semanticResults: UnifiedSearchResult[],
-): UnifiedSearchResult[] {
-  const merged = new Map(keywordResults.map((result) => [result.id, result]))
-
-  for (const semantic of semanticResults) {
-    const existing = merged.get(semantic.id)
-    if (!existing) {
-      merged.set(semantic.id, semantic)
-      continue
-    }
-    const matchedFields = [...new Set([
-      ...existing.matchedFields,
-      ...semantic.matchedFields,
-    ])]
-    merged.set(semantic.id, {
-      ...existing,
-      subtitle: semantic.subtitle,
-      score: Math.max(existing.score, semantic.score) + 20,
-      matchedFields,
-    })
-  }
-
-  return [...merged.values()]
-    .sort((a, b) => b.score - a.score || (b.updatedAt ?? 0) - (a.updatedAt ?? 0))
-    .slice(0, 120)
+function normalizeSemanticQuery(value: string): string {
+  return value.normalize('NFKC').replace(/\s+/g, ' ').trim()
 }
