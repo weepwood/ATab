@@ -40,17 +40,8 @@ async function toggleMuted(tab: TabView): Promise<void> {
         <p>模型只生成结构化计划；扩展重新计算风险，并在执行前复核目标 URL、窗口和 5 分钟有效期。</p>
       </div>
       <div class="ai-input">
-        <input
-          v-model="aiCommand"
-          class="input"
-          :disabled="store.planning || store.executing"
-          @keyup.enter="store.createPlan(aiCommand)"
-        />
-        <button
-          class="primary-button"
-          :disabled="store.planning || store.executing"
-          @click="store.createPlan(aiCommand)"
-        >
+        <input v-model="aiCommand" class="input" :disabled="store.planning || store.executing" @keyup.enter="store.createPlan(aiCommand)" />
+        <button class="primary-button" :disabled="store.planning || store.executing" @click="store.createPlan(aiCommand)">
           {{ store.planning ? '生成中…' : '生成计划' }}
         </button>
       </div>
@@ -60,21 +51,22 @@ async function toggleMuted(tab: TabView): Promise<void> {
           <div class="plan-heading">
             <strong>{{ store.currentPlan.summary }}</strong>
             <span :class="`risk ${store.currentPlan.risk}`">
-              {{ store.currentPlan.risk === 'destructive' ? '删除操作' : store.currentPlan.risk === 'reversible' ? '可逆修改' : '只读' }}
+              {{ store.currentPlan.risk === 'destructive' ? '删除预览' : store.currentPlan.risk === 'reversible' ? '可逆修改' : '只读' }}
             </span>
           </div>
           <p>{{ store.currentPlan.reason }}</p>
-          <small>计划有效期 5 分钟；标签网址或窗口变化后必须重新生成。</small>
+          <small v-if="store.currentPlan.risk === 'destructive'">删除计划暂不执行，等待可恢复记录与撤销入口完成。</small>
+          <small v-else>计划有效期 5 分钟；标签网址或窗口变化后必须重新生成。</small>
         </div>
         <div class="plan-actions">
           <button class="ghost-button" :disabled="store.executing" @click="store.cancelPlan()">取消</button>
           <button
             v-if="store.currentPlan.operations.length"
             :class="store.currentPlan.risk === 'destructive' ? 'danger-button' : 'primary-button'"
-            :disabled="store.executing"
+            :disabled="store.executing || store.currentPlan.risk === 'destructive'"
             @click="store.executeCurrentPlan"
           >
-            {{ store.executing ? '执行中…' : '确认执行' }}
+            {{ store.currentPlan.risk === 'destructive' ? '暂未开放' : store.executing ? '执行中…' : '确认执行' }}
           </button>
         </div>
       </div>
@@ -83,28 +75,20 @@ async function toggleMuted(tab: TabView): Promise<void> {
     <section class="toolbar">
       <input v-model="store.query" class="input" placeholder="搜索标题或网址" />
       <button class="ghost-button" @click="store.selectAllVisible">全选结果</button>
-      <button v-if="store.selectedIds.length" class="danger-button" @click="store.closeSelected">
-        关闭所选（{{ store.selectedIds.length }}）
-      </button>
+      <button v-if="store.selectedIds.length" class="danger-button" @click="store.closeSelected">关闭所选（{{ store.selectedIds.length }}）</button>
     </section>
 
     <div v-if="store.loading" class="empty">正在读取标签页…</div>
     <div v-else-if="store.groupedTabs.length === 0" class="empty">没有匹配的标签页</div>
     <section v-else class="groups">
       <article v-for="[domain, tabs] in store.groupedTabs" :key="domain" class="group surface">
-        <header class="group-header">
-          <strong>{{ domain }}</strong>
-          <span>{{ tabs.length }} 个标签</span>
-        </header>
+        <header class="group-header"><strong>{{ domain }}</strong><span>{{ tabs.length }} 个标签</span></header>
         <div class="tab-list">
           <div v-for="tab in tabs" :key="tab.id" class="tab-row" :class="{ selected: store.selectedIds.includes(tab.id) }">
             <input type="checkbox" :checked="store.selectedIds.includes(tab.id)" @change="store.toggleSelected(tab.id)" />
             <img v-if="tab.faviconUrl" :src="tab.faviconUrl" alt="" />
             <span v-else class="fallback-icon">●</span>
-            <button class="tab-main" @click="focus(tab)">
-              <strong>{{ tab.title }}</strong>
-              <small>{{ tab.url }}</small>
-            </button>
+            <button class="tab-main" @click="focus(tab)"><strong>{{ tab.title }}</strong><small>{{ tab.url }}</small></button>
             <button class="row-action" @click="togglePinned(tab)">{{ tab.pinned ? '已固定' : '固定' }}</button>
             <button class="row-action" @click="toggleMuted(tab)">{{ tab.muted ? '已静音' : '静音' }}</button>
           </div>
