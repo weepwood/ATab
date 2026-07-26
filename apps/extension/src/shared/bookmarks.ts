@@ -35,6 +35,14 @@ export function collectBookmarkDescendantIds(node: BookmarkNodeView): Set<string
   return ids
 }
 
+export function getWritableBookmarkFolders(nodes: BookmarkNodeView[]): FlatBookmarkNode[] {
+  return flattenBookmarkTree(nodes).filter((node) => !node.url && Boolean(node.parentId))
+}
+
+export function getDefaultBookmarkFolder(nodes: BookmarkNodeView[]): BookmarkNodeView | undefined {
+  return getWritableBookmarkFolders(nodes)[0]
+}
+
 export function getBookmarkMoveTargets(
   nodes: BookmarkNodeView[],
   movingId: string,
@@ -45,9 +53,7 @@ export function getBookmarkMoveTargets(
     for (const id of collectBookmarkDescendantIds(moving)) blocked.add(id)
   }
 
-  return flattenBookmarkTree(nodes).filter(
-    (node) => !node.url && !blocked.has(node.id),
-  )
+  return getWritableBookmarkFolders(nodes).filter((node) => !blocked.has(node.id))
 }
 
 export function normalizeBookmarkUrl(value: string): string {
