@@ -57,9 +57,9 @@ test('ATab 生产扩展可以加载并打开核心页面', async () => {
     )
     await expect(dashboard.getByRole('button', { name: '标签页', exact: true })).toBeVisible()
     await expect(dashboard.getByRole('button', { name: '搜索', exact: true })).toBeVisible()
-    await expect(dashboard.getByRole('button', { name: '网页资料', exact: true })).toBeVisible()
+    await expect(dashboard.getByRole('button', { name: '资料', exact: true })).toBeVisible()
 
-    await dashboard.getByRole('button', { name: '网页资料', exact: true }).click()
+    await dashboard.getByRole('button', { name: '资料', exact: true }).click()
     await expect(dashboard.getByRole('heading', { name: '网页资料' })).toBeVisible()
     await expect(dashboard.locator('body')).toContainText('正文')
 
