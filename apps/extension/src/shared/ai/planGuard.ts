@@ -16,6 +16,12 @@ export function assertPlanFresh(plan: AiActionPlan, now = Date.now()): void {
   }
 }
 
+export function assertPlanExecutable(plan: AiActionPlan): void {
+  if (plan.operations.some((operation) => operation.type === 'CLOSE_TABS')) {
+    throw new Error('AI 删除操作暂未开放：需要先实现可恢复记录与撤销入口')
+  }
+}
+
 export function findStalePlanTargetIds(
   targets: Record<number, PlanTargetSnapshot>,
   currentTabs: TabView[],
