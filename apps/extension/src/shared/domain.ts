@@ -1,3 +1,9 @@
+import type {
+  AgentActionPlan,
+  AgentOperation,
+  TabGroupColor as SharedTabGroupColor,
+} from '@atab/contracts'
+
 export interface TabView {
   id: number
   windowId: number
@@ -22,7 +28,7 @@ export interface BookmarkNodeView {
   children: BookmarkNodeView[]
 }
 
-export type TabGroupColor = 'grey' | 'blue' | 'red' | 'yellow' | 'green' | 'pink' | 'purple' | 'cyan' | 'orange'
+export type TabGroupColor = SharedTabGroupColor
 
 export interface SessionGroupSnapshot {
   key: string
@@ -77,17 +83,5 @@ export interface ResourceRecord {
   lastSeenAt: string
 }
 
-export type AiOperation =
-  | { type: 'CREATE_GROUP'; tabIds: number[]; name: string; color: TabGroupColor }
-  | { type: 'CLOSE_TABS'; tabIds: number[] }
-  | { type: 'MUTE_TABS'; tabIds: number[] }
-
-export interface AiActionPlan {
-  id: string
-  summary: string
-  reason: string
-  risk: 'read-only' | 'reversible' | 'destructive'
-  requiresConfirmation: boolean
-  createdAt: string
-  operations: AiOperation[]
-}
+export type AiOperation = AgentOperation
+export type AiActionPlan = AgentActionPlan
