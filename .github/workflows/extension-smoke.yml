@@ -55,7 +55,7 @@ jobs:
       - name: Chromium extension smoke test
         env:
           ATAB_EXTENSION_DIR: ${{ github.workspace }}/apps/extension/dist
-        run: xvfb-run -a pnpm --filter @atab/e2e test
+        run: xvfb-run -a pnpm --filter @atab/e2e smoke
 
       - name: Upload extension ZIP
         uses: actions/upload-artifact@v4
