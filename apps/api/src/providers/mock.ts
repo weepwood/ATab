@@ -5,11 +5,18 @@ import type {
   ResourceSummaryDraft,
   ResourceSummaryRequest,
 } from '@atab/contracts'
+import type {
+  EmbeddingDraft,
+  EmbeddingRequest,
+} from '@atab/contracts/embedding'
 import type { AgentProvider } from './types'
+
+const MOCK_EMBEDDING_DIMENSIONS = 64
 
 export class MockAgentProvider implements AgentProvider {
   readonly name = 'mock'
   readonly model = 'atab-mock-v1'
+  readonly embeddingModel = 'atab-mock-embedding-v1'
 
   async generatePlan(request: AgentPlanRequest): Promise<AgentPlanDraft> {
     const command = request.command.toLowerCase()
@@ -37,6 +44,15 @@ export class MockAgentProvider implements AgentProvider {
       summary,
       keyPoints: selected.slice(0, 3).map((sentence) => sentence.slice(0, 280)),
       tags: deriveTags(request),
+    }
+  }
+
+  async embedTexts(request: EmbeddingRequest): Promise<EmbeddingDraft> {
+    return {
+      embeddings: request.inputs.map((input) => ({
+        id: input.id,
+        vector: createMockEmbedding(input.text),
+      })),
     }
   }
 }
@@ -131,6 +147,41 @@ function deriveTags(request: ResourceSummaryRequest): string[] {
     tags.add(word.slice(0, 80))
   }
   return [...tags].slice(0, 12)
+}
+
+function createMockEmbedding(text: string): number[] {
+  const vector = Array<number>(MOCK_EMBEDDING_DIMENSIONS).fill(0)
+  const tokens = tokenizeForEmbedding(text)
+  for (const token of tokens) {
+    const firstHash = hashToken(token, 2_166_136_261)
+    const secondHash = hashToken(token, 1_314_238_911)
+    const firstIndex = firstHash % MOCK_EMBEDDING_DIMENSIONS
+    const secondIndex = secondHash % MOCK_EMBEDDING_DIMENSIONS
+    vector[firstIndex] += (firstHash & 1) === 0 ? 1 : -1
+    vector[secondIndex] += (secondHash & 1) === 0 ? 0.5 : -0.5
+  }
+  const norm = Math.sqrt(vector.reduce((sum, value) => sum + value * value, 0))
+  if (norm === 0) return vector.map((_, index) => (index === 0 ? 1 : 0))
+  return vector.map((value) => Number((value / norm).toFixed(8)))
+}
+
+function tokenizeForEmbedding(text: string): string[] {
+  const normalized = text.normalize('NFKC').toLocaleLowerCase('zh-CN')
+  const words = normalized.match(/[a-z0-9]+|[\u3400-\u9fff\u3040-\u30ff\uac00-\ud7af]/gu) ?? []
+  const bigrams: string[] = []
+  for (let index = 0; index < words.length - 1; index += 1) {
+    bigrams.push(`${words[index]}:${words[index + 1]}`)
+  }
+  return [...words, ...bigrams].slice(0, 20_000)
+}
+
+function hashToken(token: string, seed: number): number {
+  let hash = seed >>> 0
+  for (const character of token) {
+    hash ^= character.codePointAt(0) ?? 0
+    hash = Math.imul(hash, 16_777_619) >>> 0
+  }
+  return hash
 }
 
 function normalizeUrl(value: string): string {

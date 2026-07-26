@@ -146,5 +146,16 @@ export interface ResourceSummaryRecord {
   updatedAt: string
 }
 
+export interface ResourceEmbeddingRecord {
+  resourceId: string
+  vector: number[]
+  dimensions: number
+  provider: string
+  model: string
+  contentHash: string
+  createdAt: string
+  updatedAt: string
+}
+
 export type AiOperation = AgentOperation
 export type AiActionPlan = AgentActionPlan

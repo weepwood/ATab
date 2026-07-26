@@ -5,6 +5,7 @@ export interface ApiConfig {
   baseUrl: string
   apiKey?: string
   model?: string
+  embeddingModel?: string
   requestTimeoutMs: number
   allowedOrigins: string[]
   supabaseUrl?: string
@@ -23,6 +24,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ApiConfig {
     baseUrl: (env.AI_BASE_URL || 'https://api.openai.com/v1').replace(/\/$/, ''),
     apiKey: env.AI_API_KEY?.trim() || undefined,
     model: env.AI_MODEL?.trim() || undefined,
+    embeddingModel: env.AI_EMBEDDING_MODEL?.trim() || undefined,
     requestTimeoutMs: readPositiveInteger(env.AI_REQUEST_TIMEOUT_MS, 30_000),
     allowedOrigins: (env.AI_ALLOWED_ORIGINS || '')
       .split(',')

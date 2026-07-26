@@ -5,7 +5,8 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
-    "./sync": "./src/sync.ts"
+    "./sync": "./src/sync.ts",
+    "./embedding": "./src/embedding.ts"
   },
   "types": "./src/index.ts",
   "scripts": {

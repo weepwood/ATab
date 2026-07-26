@@ -77,6 +77,7 @@ describe('AI API', () => {
   it('拒绝 Provider 引用请求范围外的标签', async () => {
     const maliciousProvider: AgentProvider = {
       name: 'malicious-test',
+      embeddingModel: 'test-embedding',
       async generatePlan() {
         return {
           summary: '越界操作',
@@ -96,6 +97,14 @@ describe('AI API', () => {
           summary: '测试摘要',
           keyPoints: [],
           tags: [],
+        }
+      },
+      async embedTexts(request) {
+        return {
+          embeddings: request.inputs.map((input) => ({
+            id: input.id,
+            vector: Array(8).fill(0.1),
+          })),
         }
       },
     }
@@ -152,6 +161,7 @@ describe('AI API', () => {
   it('拒绝不符合协议的模型摘要输出', async () => {
     const invalidProvider: AgentProvider = {
       name: 'invalid-summary-test',
+      embeddingModel: 'test-embedding',
       async generatePlan() {
         return {
           summary: '空计划',
@@ -169,6 +179,14 @@ describe('AI API', () => {
           injectedField: '不允许的字段',
         }
       },
+      async embedTexts(request) {
+        return {
+          embeddings: request.inputs.map((input) => ({
+            id: input.id,
+            vector: Array(8).fill(0.1),
+          })),
+        }
+      },
     }
 
     const app = await buildApp({ config, provider: invalidProvider })
@@ -182,6 +200,83 @@ describe('AI API', () => {
     expect(response.statusCode).toBe(502)
     expect(response.json()).toMatchObject({
       error: { code: 'SUMMARY_GENERATION_FAILED' },
+    })
+  })
+
+  it('通过 Mock Provider 生成固定维度语义向量', async () => {
+    const app = await buildApp({ config, provider: new MockAgentProvider() })
+    const response = await app.inject({
+      method: 'POST',
+      url: '/v1/ai/embeddings',
+      payload: {
+        purpose: 'resource-index',
+        inputs: [
+          { id: 'resource-1', text: '复杂系统与反馈回路' },
+          { id: 'resource-2', text: '浏览器标签页管理' },
+        ],
+      },
+    })
+    await app.close()
+
+    expect(response.statusCode).toBe(200)
+    expect(response.json()).toMatchObject({
+      provider: 'mock',
+      model: 'atab-mock-embedding-v1',
+      dimensions: 64,
+      embeddings: [
+        { id: 'resource-1' },
+        { id: 'resource-2' },
+      ],
+    })
+  })
+
+  it('拒绝无效嵌入请求和越界 Provider 输出', async () => {
+    const app = await buildApp({ config, provider: new MockAgentProvider() })
+    const invalidRequest = await app.inject({
+      method: 'POST',
+      url: '/v1/ai/embeddings',
+      payload: { purpose: 'search-query', inputs: [] },
+    })
+    await app.close()
+    expect(invalidRequest.statusCode).toBe(400)
+    expect(invalidRequest.json()).toMatchObject({
+      error: { code: 'INVALID_EMBEDDING_REQUEST' },
+    })
+
+    const invalidEmbeddingProvider: AgentProvider = {
+      name: 'invalid-embedding-test',
+      embeddingModel: 'test-embedding',
+      async generatePlan() {
+        return {
+          summary: '空计划',
+          reason: '测试',
+          risk: 'read-only',
+          requiresConfirmation: false,
+          operations: [],
+        }
+      },
+      async summarizeResource() {
+        return { summary: '测试', keyPoints: [], tags: [] }
+      },
+      async embedTexts() {
+        return {
+          embeddings: [{ id: 'outside', vector: Array(8).fill(0.1) }],
+        }
+      },
+    }
+    const invalidApp = await buildApp({ config, provider: invalidEmbeddingProvider })
+    const invalidOutput = await invalidApp.inject({
+      method: 'POST',
+      url: '/v1/ai/embeddings',
+      payload: {
+        purpose: 'search-query',
+        inputs: [{ id: 'query', text: '复杂系统' }],
+      },
+    })
+    await invalidApp.close()
+    expect(invalidOutput.statusCode).toBe(502)
+    expect(invalidOutput.json()).toMatchObject({
+      error: { code: 'EMBEDDING_GENERATION_FAILED' },
     })
   })
 
