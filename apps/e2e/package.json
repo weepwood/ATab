@@ -4,7 +4,8 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "test": "playwright test",
+    "test": "node -e \"console.log('E2E smoke tests are executed explicitly after the production build.')\"",
+    "smoke": "playwright test",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "build": "tsc --noEmit -p tsconfig.json"
   },
