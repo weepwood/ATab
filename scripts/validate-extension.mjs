@@ -1,5 +1,5 @@
 import { lstat, readFile, readdir, stat } from 'node:fs/promises'
-import { extname, join, relative, resolve } from 'node:path'
+import { basename, extname, join, relative, resolve } from 'node:path'
 import process from 'node:process'
 
 const root = resolve(process.cwd())
@@ -17,7 +17,23 @@ for (const entry of entryFiles) {
 }
 
 const files = await walk(distDir)
-const scannable = files.filter((file) => ['.js', '.mjs', '.cjs', '.html', '.json', '.css'].includes(extname(file)))
+const forbiddenFiles = files
+  .map((file) => relative(distDir, file))
+  .filter(isForbiddenArtifactFile)
+if (forbiddenFiles.length > 0) {
+  throw new Error(`扩展产物包含禁止发布的文件：${forbiddenFiles.slice(0, 10).join(', ')}`)
+}
+
+const scannable = files.filter((file) => [
+  '.js',
+  '.mjs',
+  '.cjs',
+  '.html',
+  '.json',
+  '.css',
+  '.txt',
+  '.xml',
+].includes(extname(file).toLowerCase()))
 const findings = []
 
 const secretPatterns = [
@@ -40,7 +56,7 @@ for (const file of scannable) {
     pattern.lastIndex = 0
     if (pattern.test(text)) findings.push({ file: relative(distDir, file), rule: name })
   }
-  if (extname(file) === '.html') {
+  if (extname(file).toLowerCase() === '.html') {
     const remoteScript = /<script\b[^>]*\bsrc\s*=\s*['"]https?:\/\//i.test(text)
     if (remoteScript) findings.push({ file: relative(distDir, file), rule: 'remote-script-src' })
   }
@@ -73,10 +89,12 @@ function validateManifest(value) {
   if (typeof value.version !== 'string' || !/^\d+\.\d+\.\d+(?:\.\d+)?$/.test(value.version)) {
     throw new Error('Manifest version 必须是 Chrome 支持的数字版本')
   }
-
-  const minimumChrome = Number.parseInt(value.minimum_chrome_version, 10)
-  if (!Number.isInteger(minimumChrome) || minimumChrome > 109) {
-    throw new Error('Manifest minimum_chrome_version 不得高于项目兼容目标 Chrome 109')
+  if (
+    typeof value.minimum_chrome_version !== 'string'
+    || !/^\d+$/.test(value.minimum_chrome_version)
+    || Number(value.minimum_chrome_version) > 109
+  ) {
+    throw new Error('Manifest minimum_chrome_version 必须是不高于 109 的整数版本')
   }
 
   const permissions = new Set(value.permissions ?? [])
@@ -92,9 +110,11 @@ function validateManifest(value) {
   ]) {
     if (!permissions.has(permission)) throw new Error(`Manifest 缺少必要权限：${permission}`)
   }
+  if (permissions.has('history')) throw new Error('浏览历史不得成为安装时必需权限')
 
   const requiredHosts = [...(value.host_permissions ?? [])]
-  if (requiredHosts.includes('<all_urls>') || requiredHosts.some((host) => host === 'http://*/*' || host === 'https://*/*')) {
+  const forbiddenRequiredHosts = new Set(['<all_urls>', '*://*/*', 'http://*/*', 'https://*/*'])
+  if (requiredHosts.some((host) => forbiddenRequiredHosts.has(host))) {
     throw new Error('扩展不得在安装时申请全部网站访问权限')
   }
 
@@ -111,13 +131,30 @@ function validateManifest(value) {
   }
 
   const extensionCsp = value.content_security_policy?.extension_pages
-  if (typeof extensionCsp === 'string') {
-    if (!/\bscript-src\b[^;]*'self'/i.test(extensionCsp)) {
-      throw new Error("扩展页面 CSP 的 script-src 必须包含 'self'")
-    }
-    if (/'unsafe-eval'|\bhttps?:|\bdata:/i.test(extensionCsp)) {
-      throw new Error('扩展页面 CSP 不得允许 unsafe-eval、远程脚本或 data: 脚本')
-    }
+  if (typeof extensionCsp === 'string') validateExtensionPageCsp(extensionCsp)
+}
+
+function validateExtensionPageCsp(csp) {
+  const directives = new Map()
+  for (const segment of csp.split(';')) {
+    const tokens = segment.trim().split(/\s+/).filter(Boolean)
+    if (tokens.length > 0) directives.set(tokens[0].toLowerCase(), tokens.slice(1))
+  }
+
+  const scriptSources = directives.get('script-src') ?? directives.get('default-src')
+  if (!scriptSources?.includes("'self'")) {
+    throw new Error("扩展页面 CSP 的有效 script-src 必须包含 'self'")
+  }
+  if (scriptSources.some((source) => (
+    source === "'unsafe-eval'"
+    || source === "'unsafe-inline'"
+    || source === 'data:'
+    || source === 'http:'
+    || source === 'https:'
+    || source.startsWith('http://')
+    || source.startsWith('https://')
+  ))) {
+    throw new Error('扩展页面 CSP 不得允许 unsafe-eval、unsafe-inline、远程脚本或 data: 脚本')
   }
 }
 
@@ -143,10 +180,29 @@ function collectEntryFiles(value) {
 function validateRelativeEntry(entry) {
   const normalized = entry.replaceAll('\\', '/')
   const parts = normalized.split('/')
-  if (!normalized || normalized.startsWith('/') || parts.includes('..')) {
+  if (
+    !normalized
+    || normalized.startsWith('/')
+    || normalized.includes('?')
+    || normalized.includes('#')
+    || normalized.includes('://')
+    || parts.includes('..')
+  ) {
     throw new Error(`Manifest 包含不安全入口路径：${entry}`)
   }
   return normalized
+}
+
+function isForbiddenArtifactFile(path) {
+  const name = basename(path).toLowerCase()
+  const extension = extname(name)
+  return name === '.env'
+    || name.startsWith('.env.')
+    || extension === '.pem'
+    || extension === '.key'
+    || extension === '.p12'
+    || extension === '.pfx'
+    || extension === '.map'
 }
 
 async function ensureDirectory(path, message) {
