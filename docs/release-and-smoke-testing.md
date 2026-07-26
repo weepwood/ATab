@@ -173,11 +173,11 @@ node scripts/validate-extension.mjs
 python3 scripts/package-extension.py
 pnpm --filter @atab/e2e exec playwright install chromium
 ATAB_EXTENSION_DIR="$PWD/apps/extension/dist" \
-  pnpm --filter @atab/e2e exec playwright test
+  pnpm --filter @atab/e2e smoke
 ```
 
 Linux 无桌面环境时使用：
 
 ```bash
-xvfb-run -a pnpm --filter @atab/e2e exec playwright test
+xvfb-run -a pnpm --filter @atab/e2e smoke
 ```
