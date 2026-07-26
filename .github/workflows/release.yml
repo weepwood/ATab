@@ -50,6 +50,9 @@ jobs:
       - name: Package extension ZIP
         run: python3 scripts/package-extension.py
 
+      - name: Verify extension checksum
+        run: (cd artifacts && sha256sum -c atab-extension-*.zip.sha256)
+
       - name: Install Playwright Chromium
         run: pnpm --filter @atab/e2e exec playwright install --with-deps chromium
 
