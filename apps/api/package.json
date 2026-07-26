@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/server.ts",
-    "build": "tsc --noEmit -p tsconfig.json && tsup src/server.ts --format esm --dts --clean",
+    "build": "tsc --noEmit -p tsconfig.json && tsup",
     "start": "node dist/server.js",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run"
