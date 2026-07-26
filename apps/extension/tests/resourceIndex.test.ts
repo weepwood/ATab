@@ -14,7 +14,7 @@ import {
 
 describe('本地网页资源索引', () => {
   it('生成受限长度的单行摘要', () => {
-    expect(createResourceExcerpt('第一段\n\n第二段   内容', 10)).toBe('第一段 第二段…')
+    expect(createResourceExcerpt('第一段\n\n第二段   内容', 8)).toBe('第一段 第二段…')
     expect(createResourceExcerpt('短内容', 10)).toBe('短内容')
   })
 
