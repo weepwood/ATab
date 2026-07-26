@@ -4,6 +4,8 @@ import {
   findBookmarkNode,
   flattenBookmarkTree,
   getBookmarkMoveTargets,
+  getDefaultBookmarkFolder,
+  getWritableBookmarkFolders,
   normalizeBookmarkUrl,
 } from '@/shared/bookmarks'
 import { browserGateway } from '@/shared/browser'
@@ -18,10 +20,13 @@ export const useBookmarksStore = defineStore('bookmarks', () => {
   const error = ref('')
 
   const allNodes = computed(() => flattenBookmarkTree(roots.value))
-  const folders = computed(() => allNodes.value.filter((node) => !node.url))
+  const folders = computed(() => getWritableBookmarkFolders(roots.value))
   const activeFolder = computed(() => {
-    if (!activeFolderId.value) return roots.value[0]
-    return findBookmarkNode(roots.value, activeFolderId.value) ?? roots.value[0]
+    const selected = activeFolderId.value
+      ? findBookmarkNode(roots.value, activeFolderId.value)
+      : undefined
+    if (selected && !selected.url && selected.parentId) return selected
+    return getDefaultBookmarkFolder(roots.value)
   })
 
   const visibleItems = computed(() => {
@@ -40,8 +45,11 @@ export const useBookmarksStore = defineStore('bookmarks', () => {
     error.value = ''
     try {
       roots.value = await browserGateway.listBookmarks()
-      if (!activeFolderId.value || !findBookmarkNode(roots.value, activeFolderId.value)) {
-        activeFolderId.value = roots.value[0]?.id ?? null
+      const selected = activeFolderId.value
+        ? findBookmarkNode(roots.value, activeFolderId.value)
+        : undefined
+      if (!selected || selected.url || !selected.parentId) {
+        activeFolderId.value = getDefaultBookmarkFolder(roots.value)?.id ?? null
       }
     } catch (cause) {
       error.value = cause instanceof Error ? cause.message : '读取书签失败'
@@ -52,7 +60,7 @@ export const useBookmarksStore = defineStore('bookmarks', () => {
 
   function selectFolder(id: string): void {
     const node = findBookmarkNode(roots.value, id)
-    if (node && !node.url) activeFolderId.value = id
+    if (node && !node.url && node.parentId) activeFolderId.value = id
   }
 
   async function openNode(node: BookmarkNodeView): Promise<void> {
@@ -77,17 +85,21 @@ export const useBookmarksStore = defineStore('bookmarks', () => {
     }
   }
 
+  function requireWritableParentId(): string {
+    const folder = activeFolder.value
+    if (!folder?.id || !folder.parentId) throw new Error('没有可用的书签文件夹')
+    return folder.id
+  }
+
   async function createFolder(title: string): Promise<void> {
-    const parentId = activeFolder.value?.id
+    const parentId = requireWritableParentId()
     const normalizedTitle = title.trim()
-    if (!parentId) throw new Error('没有可用的父文件夹')
     if (!normalizedTitle) throw new Error('请输入文件夹名称')
     await runMutation(() => browserGateway.createBookmark({ parentId, title: normalizedTitle }))
   }
 
   async function createBookmark(title: string, url: string): Promise<void> {
-    const parentId = activeFolder.value?.id
-    if (!parentId) throw new Error('没有可用的父文件夹')
+    const parentId = requireWritableParentId()
     const normalizedUrl = normalizeBookmarkUrl(url)
     const normalizedTitle = title.trim() || new URL(normalizedUrl).hostname
     await runMutation(() => browserGateway.createBookmark({
@@ -114,7 +126,7 @@ export const useBookmarksStore = defineStore('bookmarks', () => {
 
   async function moveNode(node: BookmarkNodeView, parentId: string): Promise<void> {
     const allowed = moveTargets(node.id).some((target) => target.id === parentId)
-    if (!allowed) throw new Error('不能移动到当前节点或其子目录')
+    if (!allowed) throw new Error('不能移动到书签总根节点、当前节点或其子目录')
     await runMutation(() => browserGateway.moveBookmark(node.id, parentId))
   }
 
