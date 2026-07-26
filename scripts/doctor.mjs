@@ -106,6 +106,7 @@ export async function runDoctor(input, dependencies = {}) {
     validate: validateReadinessResponse,
   })
   report.checks.push(ready.check)
+  if (!ready.ok) return finalizeReport(report)
 
   const authMode = health.value.authMode
   if (input.active !== true) {
@@ -122,13 +123,14 @@ export async function runDoctor(input, dependencies = {}) {
 
   const authorization = token ? `Bearer ${token}` : undefined
   const activeChecks = [
-    createPlanCheck(endpoint, input.timeoutMs, fetchImpl, authorization),
-    createSummaryCheck(endpoint, input.timeoutMs, fetchImpl, authorization),
-    createEmbeddingCheck(endpoint, input.timeoutMs, fetchImpl, authorization),
+    () => createPlanCheck(endpoint, input.timeoutMs, fetchImpl, authorization),
+    () => createSummaryCheck(endpoint, input.timeoutMs, fetchImpl, authorization),
+    () => createEmbeddingCheck(endpoint, input.timeoutMs, fetchImpl, authorization),
   ]
-  for (const task of activeChecks) {
-    const result = await task
+  for (const execute of activeChecks) {
+    const result = await execute()
     report.checks.push(result.check)
+    if (!result.ok) break
   }
   return finalizeReport(report)
 }
@@ -185,7 +187,7 @@ async function createPlanCheck(endpoint, timeoutMs, fetchImpl, authorization) {
       url: 'https://example.invalid/atab-diagnostics',
       active: true,
       pinned: false,
-      audible: false,
+      audible: true,
       muted: false,
     }],
   }
@@ -204,9 +206,11 @@ async function createPlanCheck(endpoint, timeoutMs, fetchImpl, authorization) {
       const plan = asObject(root.plan)
       if (typeof root.provider !== 'string') return false
       if (typeof plan.summary !== 'string' || !Array.isArray(plan.operations)) return false
-      return plan.operations.every((operation) => {
+      return plan.operations.some((operation) => {
         const item = asObject(operation)
-        return Array.isArray(item.tabIds)
+        return item.type === 'MUTE_TABS'
+          && Array.isArray(item.tabIds)
+          && item.tabIds.length > 0
           && item.tabIds.every((id) => id === 900001)
       })
     },
