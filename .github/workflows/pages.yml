@@ -86,6 +86,7 @@ jobs:
         run: |
           set -euo pipefail
           page_url="${PAGE_URL:-https://weepwood.github.io/ATab/}"
+          run_url="https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
           body=$(cat <<EOF
           ### GitHub Pages 部署报告
 
@@ -93,6 +94,7 @@ jobs:
           - Pages 部署：\`${DEPLOY_RESULT}\`
           - 访问地址：${page_url}
           - 提交：\`${GITHUB_SHA}\`
+          - 工作流运行：${run_url}
 
           若部署失败，请查看本次 **Deploy GitHub Pages Demo** 工作流日志。
           EOF
