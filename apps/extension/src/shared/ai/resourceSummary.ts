@@ -8,6 +8,7 @@ import type {
   ResourceContentRecord,
   ResourceRecord,
 } from '../domain'
+import { getAiAuthorizationHeaders } from './auth'
 import {
   getAiProviderSettings,
   hasAiEndpointPermission,
@@ -45,6 +46,7 @@ export async function requestResourceSummary(
   content: ResourceContentRecord,
 ): Promise<ResourceSummaryApiResponse> {
   const preview = await getResourceSummaryUploadPreview(content)
+  const authorizationHeaders = await getAiAuthorizationHeaders()
   const request: ResourceSummaryRequest = {
     resourceId: resource.id,
     title: resource.title,
@@ -59,7 +61,10 @@ export async function requestResourceSummary(
     `${preview.endpoint}/v1/ai/resources/summarize`,
     {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
+      headers: {
+        'content-type': 'application/json',
+        ...authorizationHeaders,
+      },
       credentials: 'omit',
       body: JSON.stringify(request),
     },
