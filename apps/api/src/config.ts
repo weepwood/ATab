@@ -3,13 +3,13 @@ export type AiAuthMode = 'disabled' | 'supabase'
 
 export interface ApiConfig {
   provider: AiProviderMode
-  authMode: AiAuthMode
+  authMode?: AiAuthMode
   baseUrl: string
   apiKey?: string
   model?: string
   embeddingModel?: string
   requestTimeoutMs: number
-  rateLimitPerMinute: number
+  rateLimitPerMinute?: number
   allowedOrigins: string[]
   supabaseUrl?: string
   supabaseAnonKey?: string
