@@ -4,6 +4,7 @@ import { browserGateway } from '@/shared/browser'
 import type { AiActionPlan, TabView } from '@/shared/domain'
 import { createAiPlan } from '@/shared/ai/provider'
 import {
+  assertPlanExecutable,
   assertPlanFresh,
   findStalePlanTargetIds,
   type PlanTargetSnapshot,
@@ -111,6 +112,7 @@ export const useTabsStore = defineStore('tabs', () => {
     planError.value = ''
     let executionStarted = false
     try {
+      assertPlanExecutable(plan)
       assertPlanFresh(plan)
       const currentTabs = await browserGateway.listTabs()
       if (findStalePlanTargetIds(planTargets.value, currentTabs).length > 0) {
