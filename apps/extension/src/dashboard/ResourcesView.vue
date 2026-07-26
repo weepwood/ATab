@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import { onMounted } from 'vue'
 import type { ResourceRecord } from '@/shared/domain'
+import { getEmbeddingEndpointPreview } from '@/shared/ai/embedding'
 import { getResourceSummaryUploadPreview } from '@/shared/ai/resourceSummary'
 import { isPotentiallySensitivePage } from '@/shared/pageCapture'
 import type { ResourceLibraryItem } from '@/shared/resourceIndex'
+import { buildResourceEmbeddingText } from '@/shared/semanticSearch'
 import { useResourcesStore } from '@/stores/resources'
 
 const store = useResourcesStore()
@@ -56,6 +58,20 @@ async function summarize(item: ResourceLibraryItem): Promise<void> {
   }
 }
 
+async function createSemanticIndex(item: ResourceLibraryItem): Promise<void> {
+  try {
+    const preview = await getEmbeddingEndpointPreview()
+    const text = buildResourceEmbeddingText(item)
+    const confirmed = window.confirm(
+      `为“${item.resource.title}”建立语义索引？\n\n将向以下嵌入服务发送标题、URL、描述和最多 ${formatNumber(text.length)} 个文本字符：\n${preview.endpoint}\n\n返回的向量只保存在当前浏览器，不自动同步。`,
+    )
+    if (!confirmed) return
+    await store.createSemanticIndex(item)
+  } catch (cause) {
+    if (cause instanceof Error) store.error = cause.message
+  }
+}
+
 async function removeSummary(item: ResourceLibraryItem): Promise<void> {
   const confirmed = window.confirm(
     `删除“${item.resource.title}”的本地 AI 摘要？\n\n网页正文和资源记录会继续保留。`,
@@ -68,9 +84,21 @@ async function removeSummary(item: ResourceLibraryItem): Promise<void> {
   }
 }
 
+async function removeSemanticIndex(item: ResourceLibraryItem): Promise<void> {
+  const confirmed = window.confirm(
+    `删除“${item.resource.title}”的本地语义向量？\n\n网页正文、摘要和资源记录会继续保留。`,
+  )
+  if (!confirmed) return
+  try {
+    await store.removeSemanticIndex(item)
+  } catch {
+    // 错误已经写入 store。
+  }
+}
+
 async function remove(resource: ResourceRecord): Promise<void> {
   const confirmed = window.confirm(
-    `删除“${resource.title}”的 ATab 本地正文快照？\n\n关联的本地 AI 摘要也会删除；不会删除浏览器书签、历史记录或网页本身。`,
+    `删除“${resource.title}”的 ATab 本地正文快照？\n\n关联的本地 AI 摘要和语义向量也会删除；不会删除浏览器书签、历史记录或网页本身。`,
   )
   if (!confirmed) return
   try {
@@ -110,7 +138,7 @@ function formatNumber(value: number): string {
     </header>
 
     <p class="privacy-notice">
-      ATab 只在你主动点击保存时读取所选页面。正文默认保存在当前浏览器；只有再次明确确认“生成 AI 摘要”时，才会发送到你配置的 AI 服务。
+      ATab 只在你主动点击时读取或发送所选资源。正文、摘要和语义向量默认保存在当前浏览器；AI 摘要与语义索引分别要求独立确认。
     </p>
 
     <section class="capture-panel surface">
@@ -205,10 +233,25 @@ function formatNumber(value: number): string {
           <small>生成于 {{ formatTime(item.summary.updatedAt) }} · 仅本地保存</small>
         </section>
 
+        <section v-if="item.embedding" class="embedding-panel" :class="{ stale: store.isEmbeddingStale(item) }">
+          <div>
+            <strong>语义索引</strong>
+            <span>{{ item.embedding.provider }} / {{ item.embedding.model }}</span>
+          </div>
+          <div class="embedding-meta">
+            <span>{{ formatNumber(item.embedding.dimensions) }} 维</span>
+            <span>更新于 {{ formatTime(item.embedding.updatedAt) }}</span>
+            <span v-if="store.isEmbeddingStale(item)" class="stale-badge">正文已更新，向量过期</span>
+            <span v-else>本地可检索</span>
+          </div>
+        </section>
+
         <div class="privacy-tags">
           <span>正文仅本地</span>
           <span v-if="item.summary">摘要仅本地</span>
-          <span v-else>AI 未读取</span>
+          <span v-else>摘要未生成</span>
+          <span v-if="item.embedding">向量仅本地</span>
+          <span v-else>语义索引未生成</span>
           <span>未同步</span>
         </div>
 
@@ -229,8 +272,18 @@ function formatNumber(value: number): string {
           >
             {{ store.isSummarizing(item.resource.id) ? '摘要生成中…' : item.summary ? '重新生成摘要' : '生成 AI 摘要' }}
           </button>
+          <button
+            class="embedding-action"
+            :disabled="store.isIndexing(item.resource.id)"
+            @click="createSemanticIndex(item)"
+          >
+            {{ store.isIndexing(item.resource.id) ? '索引生成中…' : item.embedding ? '重建语义索引' : '建立语义索引' }}
+          </button>
           <button v-if="item.summary" class="row-action" :disabled="store.mutating" @click="removeSummary(item)">
             删除摘要
+          </button>
+          <button v-if="item.embedding" class="row-action" :disabled="store.mutating" @click="removeSemanticIndex(item)">
+            删除语义索引
           </button>
           <button class="danger-link" :disabled="store.mutating" @click="remove(item.resource)">
             删除快照
@@ -267,21 +320,23 @@ h1 { margin: 2px 0 0; font-size: 32px; }
 .resource-heading small { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .description { margin: 0; color: var(--text); line-height: 1.6; }
 .excerpt { margin: 0; color: var(--muted); line-height: 1.65; display: -webkit-box; -webkit-line-clamp: 5; -webkit-box-orient: vertical; overflow: hidden; }
-.resource-meta, .privacy-tags, .summary-tags { display: flex; flex-wrap: wrap; gap: 7px; color: var(--muted); font-size: 12px; }
-.resource-meta span, .privacy-tags span, .summary-tags span { padding: 5px 8px; border-radius: 999px; background: var(--surface-strong); }
+.resource-meta, .privacy-tags, .summary-tags, .embedding-meta { display: flex; flex-wrap: wrap; gap: 7px; color: var(--muted); font-size: 12px; }
+.resource-meta span, .privacy-tags span, .summary-tags span, .embedding-meta span { padding: 5px 8px; border-radius: 999px; background: var(--surface-strong); }
 .privacy-tags span { color: var(--primary); background: var(--primary-soft); }
-.summary-panel { display: grid; gap: 10px; padding: 14px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface-strong); }
-.summary-panel.stale { border-color: rgba(154, 103, 0, 0.45); background: rgba(154, 103, 0, 0.07); }
-.summary-header { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; }
-.summary-header div { display: grid; gap: 3px; }
-.summary-header span, .summary-panel small { color: var(--muted); font-size: 12px; }
-.stale-badge { padding: 4px 7px; border-radius: 999px; color: #9a6700 !important; background: rgba(154, 103, 0, 0.12); white-space: nowrap; }
+.summary-panel, .embedding-panel { display: grid; gap: 10px; padding: 14px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface-strong); }
+.summary-panel.stale, .embedding-panel.stale { border-color: rgba(154, 103, 0, 0.45); background: rgba(154, 103, 0, 0.07); }
+.summary-header, .embedding-panel > div:first-child { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; }
+.summary-header div, .embedding-panel > div:first-child { display: grid; gap: 3px; }
+.summary-header span, .summary-panel small, .embedding-panel span { color: var(--muted); font-size: 12px; }
+.stale-badge { padding: 4px 7px; border-radius: 999px; color: #9a6700 !important; background: rgba(154, 103, 0, 0.12) !important; white-space: nowrap; }
 .summary-panel p { margin: 0; line-height: 1.7; }
 .summary-panel ul { margin: 0; padding-left: 20px; display: grid; gap: 5px; color: var(--muted); line-height: 1.55; }
 .summary-tags span { color: #7b61ff; background: rgba(123, 97, 255, 0.1); }
+.embedding-panel { border-color: rgba(37, 99, 235, 0.25); background: rgba(37, 99, 235, 0.06); }
 .resource-actions { display: flex; flex-wrap: wrap; gap: 8px; padding-top: 4px; border-top: 1px solid var(--line); }
-.row-action, .summary-action, .danger-link { border: 0; background: transparent; padding: 7px; color: var(--muted); }
+.row-action, .summary-action, .embedding-action, .danger-link { border: 0; background: transparent; padding: 7px; color: var(--muted); }
 .summary-action { color: var(--primary); }
+.embedding-action { color: #2563eb; }
 .danger-link { margin-left: auto; color: var(--danger); }
 button:disabled { cursor: not-allowed; opacity: 0.55; }
 .empty { padding: 72px 24px; text-align: center; color: var(--muted); }
