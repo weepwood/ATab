@@ -30,5 +30,19 @@ jobs:
         run: |
           cat typecheck.log
           exit 1
-      - run: pnpm test
+      - name: Tests
+        id: tests
+        continue-on-error: true
+        run: pnpm test > test.log 2>&1
+      - name: Upload test diagnostics
+        if: steps.tests.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-log
+          path: test.log
+      - name: Report test failure
+        if: steps.tests.outcome == 'failure'
+        run: |
+          cat test.log
+          exit 1
       - run: pnpm build
