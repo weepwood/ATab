@@ -4,6 +4,10 @@ import {
   type AgentPlanRequest,
   type ResourceSummaryRequest,
 } from '@atab/contracts'
+import type {
+  EmbeddingDraft,
+  EmbeddingRequest,
+} from '@atab/contracts/embedding'
 import type { ApiConfig } from '../config'
 import type { AgentProvider } from './types'
 
@@ -19,11 +23,26 @@ interface ChatCompletionResponse {
   }
 }
 
+interface EmbeddingResponse {
+  data?: Array<{
+    index?: number
+    embedding?: number[]
+  }>
+  model?: string
+  error?: {
+    message?: string
+  }
+}
+
 export class OpenAiCompatibleProvider implements AgentProvider {
   readonly name = 'openai-compatible'
 
   get model(): string | undefined {
     return this.config.model
+  }
+
+  get embeddingModel(): string | undefined {
+    return this.config.embeddingModel
   }
 
   constructor(private readonly config: ApiConfig) {
@@ -68,6 +87,55 @@ export class OpenAiCompatibleProvider implements AgentProvider {
       missingMessage: '模型服务没有返回结构化网页摘要',
       refusalPrefix: '模型拒绝生成网页摘要',
     })
+  }
+
+  async embedTexts(request: EmbeddingRequest): Promise<EmbeddingDraft> {
+    if (!this.config.embeddingModel) {
+      throw new Error('openai-compatible 模式缺少 AI_EMBEDDING_MODEL')
+    }
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), this.config.requestTimeoutMs)
+
+    try {
+      const response = await fetch(`${this.config.baseUrl}/embeddings`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          authorization: `Bearer ${this.config.apiKey}`,
+        },
+        signal: controller.signal,
+        body: JSON.stringify({
+          model: this.config.embeddingModel,
+          input: request.inputs.map((input) => input.text),
+          encoding_format: 'float',
+        }),
+      })
+      const payload = await readEmbeddingResponse(response)
+      if (!response.ok) {
+        throw new Error(payload.error?.message || `嵌入服务返回 HTTP ${response.status}`)
+      }
+      if (!Array.isArray(payload.data)) throw new Error('嵌入服务没有返回 data 数组')
+
+      const byIndex = new Map<number, number[]>()
+      for (const item of payload.data) {
+        if (typeof item.index !== 'number' || !Array.isArray(item.embedding)) continue
+        byIndex.set(item.index, item.embedding)
+      }
+      return {
+        embeddings: request.inputs.map((input, index) => {
+          const vector = byIndex.get(index)
+          if (!vector) throw new Error(`嵌入服务缺少第 ${index + 1} 项结果`)
+          return { id: input.id, vector }
+        }),
+      }
+    } catch (cause) {
+      if (cause instanceof DOMException && cause.name === 'AbortError') {
+        throw new Error(`嵌入请求超过 ${this.config.requestTimeoutMs}ms`)
+      }
+      throw cause
+    } finally {
+      clearTimeout(timer)
+    }
   }
 
   private async requestStructured(options: {
@@ -146,6 +214,16 @@ async function readJsonResponse(response: Response): Promise<ChatCompletionRespo
     return JSON.parse(text) as ChatCompletionResponse
   } catch {
     throw new Error(`模型服务返回了无法解析的响应（HTTP ${response.status}）`)
+  }
+}
+
+async function readEmbeddingResponse(response: Response): Promise<EmbeddingResponse> {
+  const text = await response.text()
+  if (!text) return {}
+  try {
+    return JSON.parse(text) as EmbeddingResponse
+  } catch {
+    throw new Error(`嵌入服务返回了无法解析的响应（HTTP ${response.status}）`)
   }
 }
 
