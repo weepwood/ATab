@@ -1,5 +1,5 @@
-import { readFile } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
+import { readFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { chromium, expect, test, type BrowserContext, type Page } from '@playwright/test'
@@ -47,7 +47,8 @@ test('ATab 生产扩展可以加载并打开核心页面', async () => {
     const newtabPath = manifest.chrome_url_overrides?.newtab
     expect(newtabPath, 'Manifest 应声明新标签页入口').toBeTruthy()
     const newtab = await openExtensionPage(context, extensionId, newtabPath!)
-    await expect(newtab.locator('body')).toContainText('ATab')
+    await expect(newtab.getByRole('textbox', { name: '搜索或输入网址' })).toBeVisible()
+    await expect(newtab.getByRole('link', { name: /工作台/ })).toBeVisible()
 
     const dashboard = await openExtensionPage(
       context,
@@ -78,7 +79,7 @@ test('ATab 生产扩展可以加载并打开核心页面', async () => {
     await expect(options.locator('body')).toContainText('AI')
     await expect(options.locator('body')).toContainText('同步')
 
-    await expect.poll(() => errors, { timeout: 2_000 }).toEqual([])
+    await expect.poll(() => [...errors], { timeout: 2_000 }).toEqual([])
   } finally {
     await context.close()
   }
