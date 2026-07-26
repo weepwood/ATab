@@ -1,0 +1,64 @@
+name: Deploy GitHub Pages Demo
+
+on:
+  push:
+    branches:
+      - feat/github-pages-preview
+    paths:
+      - 'site/**'
+      - '.github/workflows/pages.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: github-pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Validate static demo
+        run: |
+          set -euo pipefail
+          test -f site/index.html
+          test -f site/styles.css
+          test -f site/app.js
+          test -f site/404.html
+          node --check site/app.js
+          if grep -RInE '(sk-[A-Za-z0-9_-]{20,}|BEGIN [A-Z ]*PRIVATE KEY|SUPABASE_SERVICE_ROLE|AI_API_KEY[[:space:]]*=)' site; then
+            echo 'Pages 静态文件包含疑似敏感信息'
+            exit 1
+          fi
+          if grep -RInE '(src|href)="/' site/index.html; then
+            echo 'Pages 演示使用了不兼容仓库子路径的绝对资源地址'
+            exit 1
+          fi
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
