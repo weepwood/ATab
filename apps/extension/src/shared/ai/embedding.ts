@@ -5,6 +5,7 @@ import {
   type EmbeddingPurpose,
   type EmbeddingRequest,
 } from '@atab/contracts/embedding'
+import { getAiAuthorizationHeaders } from './auth'
 import {
   getAiProviderSettings,
   hasAiEndpointPermission,
@@ -34,12 +35,16 @@ export async function requestEmbeddings(
   inputs: EmbeddingInput[],
 ): Promise<EmbeddingApiResponse> {
   const preview = await getEmbeddingEndpointPreview()
+  const authorizationHeaders = await getAiAuthorizationHeaders()
   const request: EmbeddingRequest = { purpose, inputs }
   const response = await fetchWithTimeout(
     `${preview.endpoint}/v1/ai/embeddings`,
     {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
+      headers: {
+        'content-type': 'application/json',
+        ...authorizationHeaders,
+      },
       credentials: 'omit',
       body: JSON.stringify(request),
     },
