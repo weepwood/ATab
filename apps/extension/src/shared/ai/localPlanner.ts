@@ -25,11 +25,14 @@ export function buildLocalPlan(command: string, tabs: TabView[]): AiActionPlan {
     })
 
     return createPlan({
-      summary: `关闭 ${duplicateIds.length} 个重复标签页`,
-      reason: '按清理追踪参数后的规范化 URL 判断重复项，并优先保留当前活动标签。',
-      risk: 'destructive',
-      requiresConfirmation: true,
-      operations: duplicateIds.length > 0 ? [{ type: 'CLOSE_TABS', tabIds: duplicateIds }] : [],
+      summary: `发现 ${duplicateIds.length} 个可关闭的重复标签页`,
+      reason:
+        duplicateIds.length > 0
+          ? '当前初始原型只提供重复检测结果。关闭操作将在目标 URL、窗口、计划有效期和恢复记录均可校验后启用。'
+          : '按清理追踪参数后的规范化 URL 检查，当前没有发现重复标签页。',
+      risk: 'read-only',
+      requiresConfirmation: false,
+      operations: [],
     })
   }
 
@@ -57,7 +60,7 @@ export function buildLocalPlan(command: string, tabs: TabView[]): AiActionPlan {
 
   return createPlan({
     summary: '当前本地计划器无法安全识别该指令',
-    reason: '云端模型尚未接入。当前只支持“重复标签”“GitHub/开发分组”和“静音标签”三类演示指令。',
+    reason: '云端模型尚未接入。当前只支持“重复标签检测”“GitHub/开发分组”和“静音标签”三类演示指令。',
     risk: 'read-only',
     requiresConfirmation: false,
     operations: [],
