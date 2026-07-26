@@ -20,7 +20,8 @@ const moveTargets = computed(() =>
 
 onMounted(() => void store.refresh())
 
-function folderTitle(node: BookmarkNodeView): string {
+function folderTitle(node?: BookmarkNodeView): string {
+  if (!node) return '未选择文件夹'
   return node.parentId ? node.title || '未命名文件夹' : '全部书签'
 }
 
@@ -34,12 +35,14 @@ function closeEditor(): void {
 }
 
 function openCreateBookmark(): void {
+  if (!store.activeFolder) return
   editorMode.value = 'create-bookmark'
   title.value = ''
   url.value = ''
 }
 
 function openCreateFolder(): void {
+  if (!store.activeFolder) return
   editorMode.value = 'create-folder'
   title.value = ''
 }
@@ -91,9 +94,9 @@ async function submitEditor(): Promise<void> {
         <h1>书签管理</h1>
       </div>
       <div class="header-actions">
-        <button class="ghost-button" @click="store.refresh">刷新</button>
-        <button class="ghost-button" @click="openCreateFolder">新建文件夹</button>
-        <button class="primary-button" @click="openCreateBookmark">添加书签</button>
+        <button class="ghost-button" :disabled="store.loading || store.mutating" @click="store.refresh">刷新</button>
+        <button class="ghost-button" :disabled="store.mutating || !store.activeFolder" @click="openCreateFolder">新建文件夹</button>
+        <button class="primary-button" :disabled="store.mutating || !store.activeFolder" @click="openCreateBookmark">添加书签</button>
       </div>
     </header>
 
@@ -129,7 +132,7 @@ async function submitEditor(): Promise<void> {
       <section class="items-panel surface">
         <header class="items-header">
           <div>
-            <strong>{{ store.query ? '搜索结果' : folderTitle(store.activeFolder!) }}</strong>
+            <strong>{{ store.query ? '搜索结果' : folderTitle(store.activeFolder) }}</strong>
             <p>{{ store.query ? '在全部书签中检索' : '显示当前文件夹中的直接子项' }}</p>
           </div>
         </header>
@@ -163,14 +166,14 @@ async function submitEditor(): Promise<void> {
       <section class="dialog surface" role="dialog" aria-modal="true">
         <template v-if="editorMode === 'create-bookmark'">
           <h2>添加书签</h2>
-          <p>保存到“{{ folderTitle(store.activeFolder!) }}”。</p>
+          <p>保存到“{{ folderTitle(store.activeFolder) }}”。</p>
           <label>名称<input v-model="title" class="input" placeholder="可留空，将使用域名" /></label>
           <label>网址<input v-model="url" class="input" placeholder="https://example.com" /></label>
         </template>
 
         <template v-else-if="editorMode === 'create-folder'">
           <h2>新建文件夹</h2>
-          <p>创建在“{{ folderTitle(store.activeFolder!) }}”中。</p>
+          <p>创建在“{{ folderTitle(store.activeFolder) }}”中。</p>
           <label>名称<input v-model="title" class="input" autofocus /></label>
         </template>
 
