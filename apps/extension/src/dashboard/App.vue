@@ -1,16 +1,34 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import TabsView from './TabsView.vue'
 import SessionsView from './SessionsView.vue'
 import BookmarksView from './BookmarksView.vue'
 import CloudBookmarksView from './CloudBookmarksView.vue'
 import HistoryView from './HistoryView.vue'
+import SearchView from './SearchView.vue'
 import SyncView from './SyncView.vue'
 
-type WorkspaceView = 'tabs' | 'sessions' | 'bookmarks' | 'cloud-bookmarks' | 'history' | 'sync'
+type WorkspaceView = 'search' | 'tabs' | 'sessions' | 'bookmarks' | 'cloud-bookmarks' | 'history' | 'sync'
 
 const activeView = ref<WorkspaceView>('tabs')
+const searchView = ref<InstanceType<typeof SearchView> | null>(null)
 const optionsUrl = chrome.runtime.getURL('src/options/index.html')
+
+onMounted(() => window.addEventListener('keydown', onGlobalKeydown))
+onBeforeUnmount(() => window.removeEventListener('keydown', onGlobalKeydown))
+
+async function openSearch(): Promise<void> {
+  activeView.value = 'search'
+  await nextTick()
+  searchView.value?.focus()
+}
+
+function onGlobalKeydown(event: KeyboardEvent): void {
+  if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
+    event.preventDefault()
+    void openSearch()
+  }
+}
 </script>
 
 <template>
@@ -18,6 +36,7 @@ const optionsUrl = chrome.runtime.getURL('src/options/index.html')
     <aside class="sidebar">
       <div class="brand">A</div>
       <nav>
+        <button :class="{ active: activeView === 'search' }" @click="openSearch">搜索</button>
         <button :class="{ active: activeView === 'tabs' }" @click="activeView = 'tabs'">标签页</button>
         <button :class="{ active: activeView === 'sessions' }" @click="activeView = 'sessions'">会话</button>
         <button :class="{ active: activeView === 'bookmarks' }" @click="activeView = 'bookmarks'">书签</button>
@@ -28,7 +47,8 @@ const optionsUrl = chrome.runtime.getURL('src/options/index.html')
       <a :href="optionsUrl">设置</a>
     </aside>
 
-    <TabsView v-if="activeView === 'tabs'" />
+    <SearchView v-if="activeView === 'search'" ref="searchView" />
+    <TabsView v-else-if="activeView === 'tabs'" />
     <SessionsView v-else-if="activeView === 'sessions'" />
     <BookmarksView v-else-if="activeView === 'bookmarks'" />
     <CloudBookmarksView v-else-if="activeView === 'cloud-bookmarks'" />
