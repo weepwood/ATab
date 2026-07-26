@@ -2,7 +2,9 @@ import cors from '@fastify/cors'
 import Fastify, { type FastifyInstance } from 'fastify'
 import {
   normalizeAgentPlanDraft,
+  normalizeResourceSummaryDraft,
   validateAgentPlanRequest,
+  validateResourceSummaryRequest,
 } from '@atab/contracts'
 import { loadConfig, type ApiConfig } from './config'
 import { createAgentProvider, type AgentProvider } from './providers'
@@ -36,6 +38,7 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
   app.get('/health', async () => ({
     status: 'ok',
     provider: provider.name,
+    model: provider.model ?? null,
     syncConfigured: syncGateway.configured,
   }))
 
@@ -67,6 +70,38 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
       return reply.code(502).send({
         error: {
           code: 'PLAN_GENERATION_FAILED',
+          message: errorMessage(cause),
+        },
+      })
+    }
+  })
+
+  app.post('/v1/ai/resources/summarize', async (request, reply) => {
+    let input
+    try {
+      input = validateResourceSummaryRequest(request.body)
+    } catch (cause) {
+      return reply.code(400).send({
+        error: {
+          code: 'INVALID_SUMMARY_REQUEST',
+          message: errorMessage(cause),
+        },
+      })
+    }
+
+    try {
+      const draft = await provider.summarizeResource(input)
+      const summary = normalizeResourceSummaryDraft(draft)
+      return reply.send({
+        summary,
+        provider: provider.name,
+        model: provider.model ?? null,
+      })
+    } catch (cause) {
+      request.log.error({ err: cause }, 'AI 网页摘要生成失败')
+      return reply.code(502).send({
+        error: {
+          code: 'SUMMARY_GENERATION_FAILED',
           message: errorMessage(cause),
         },
       })
