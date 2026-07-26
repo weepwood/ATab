@@ -8,6 +8,7 @@ export default defineManifest({
   minimum_chrome_version: '109',
   permissions: ['tabs', 'tabGroups', 'bookmarks', 'sessions', 'storage', 'alarms'],
   optional_permissions: ['history'],
+  optional_host_permissions: ['http://*/*', 'https://*/*'],
   chrome_url_overrides: {
     newtab: 'src/newtab/index.html',
   },
