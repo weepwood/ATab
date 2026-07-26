@@ -28,20 +28,34 @@ export function createReadinessReport(config: ApiConfig): ReadinessReport {
   const loopback = isLoopbackHost(config.host)
   const remoteProvider = config.provider === 'openai-compatible'
   const providerUrlSafe = !remoteProvider || isSecureOrLoopbackHttpUrl(config.baseUrl)
-  const authConfigured = authMode === 'disabled'
-    || Boolean(config.supabaseUrl && config.supabaseAnonKey)
-  const corsRestricted = config.allowedOrigins.length > 0
+  const providerCredentialConfigured = !remoteProvider || Boolean(config.apiKey)
+  const providerConfigured = providerUrlSafe && providerCredentialConfigured
+
+  const supabaseCredentialsPresent = Boolean(config.supabaseUrl && config.supabaseAnonKey)
+  const supabaseTransportSafe = !config.supabaseUrl
+    || isSecureOrLoopbackHttpUrl(config.supabaseUrl)
+  const authCredentialsConfigured = authMode === 'disabled'
+    || (supabaseCredentialsPresent && supabaseTransportSafe)
   const networkExposureSafe = loopback || authMode === 'supabase'
-  const corsSafe = loopback || corsRestricted
+  const authConfigured = authCredentialsConfigured && networkExposureSafe
+
+  const corsRestricted = config.allowedOrigins.length > 0
+  const corsOriginsValid = config.allowedOrigins.every(isSafeAllowedOrigin)
+  const corsSafe = corsOriginsValid && (loopback || corsRestricted)
   const rateLimitConfigured = Number.isInteger(config.rateLimitPerMinute)
     && (config.rateLimitPerMinute ?? 0) > 0
-  const syncConfigured = Boolean(config.supabaseUrl && config.supabaseAnonKey)
+  const syncConfigured = supabaseCredentialsPresent && supabaseTransportSafe
+  const syncInvalid = Boolean(config.supabaseUrl) && !supabaseTransportSafe
 
   const checks: ReadinessReport['checks'] = {
     provider: {
-      level: providerUrlSafe ? 'pass' : 'fail',
-      code: providerUrlSafe ? 'provider-configured' : 'provider-transport-insecure',
-      configured: providerUrlSafe,
+      level: providerConfigured ? 'pass' : 'fail',
+      code: !providerCredentialConfigured
+        ? 'provider-key-missing'
+        : providerUrlSafe
+          ? 'provider-configured'
+          : 'provider-transport-insecure',
+      configured: providerConfigured,
       mode: config.provider,
     },
     chatModel: {
@@ -57,30 +71,44 @@ export function createReadinessReport(config: ApiConfig): ReadinessReport {
       configured: !remoteProvider || Boolean(config.embeddingModel),
     },
     authentication: {
-      level: authConfigured && networkExposureSafe ? 'pass' : 'fail',
-      code: !authConfigured
-        ? 'authentication-config-missing'
-        : networkExposureSafe
-          ? 'authentication-safe'
-          : 'authentication-required-for-network',
-      configured: authConfigured && networkExposureSafe,
+      level: authConfigured ? 'pass' : 'fail',
+      code: authMode === 'disabled' && !loopback
+        ? 'authentication-required-for-network'
+        : authMode === 'supabase' && !supabaseCredentialsPresent
+          ? 'authentication-config-missing'
+          : authMode === 'supabase' && !supabaseTransportSafe
+            ? 'authentication-transport-insecure'
+            : 'authentication-safe',
+      configured: authConfigured,
       mode: authMode,
     },
     sync: {
-      level: syncConfigured ? 'pass' : 'warn',
-      code: syncConfigured ? 'sync-configured' : 'sync-not-configured',
+      level: syncInvalid ? 'fail' : syncConfigured ? 'pass' : 'warn',
+      code: syncInvalid
+        ? 'sync-transport-insecure'
+        : syncConfigured
+          ? 'sync-configured'
+          : 'sync-not-configured',
       configured: syncConfigured,
     },
     cors: {
       level: corsSafe ? 'pass' : 'fail',
-      code: corsSafe ? 'cors-safe' : 'cors-origin-allowlist-required',
+      code: !corsOriginsValid
+        ? 'cors-origin-invalid'
+        : corsSafe
+          ? 'cors-safe'
+          : 'cors-origin-allowlist-required',
       configured: corsSafe,
       restricted: corsRestricted,
     },
     transport: {
-      level: providerUrlSafe ? 'pass' : 'fail',
-      code: providerUrlSafe ? 'transport-safe' : 'remote-provider-requires-https',
-      configured: providerUrlSafe,
+      level: providerUrlSafe && supabaseTransportSafe ? 'pass' : 'fail',
+      code: !providerUrlSafe
+        ? 'remote-provider-requires-https'
+        : !supabaseTransportSafe
+          ? 'supabase-requires-https'
+          : 'transport-safe',
+      configured: providerUrlSafe && supabaseTransportSafe,
       exposure: loopback ? 'loopback' : 'network',
     },
     rateLimit: {
@@ -120,10 +148,27 @@ export function isLoopbackHost(host: string): boolean {
 export function isSecureOrLoopbackHttpUrl(value: string): boolean {
   try {
     const url = new URL(value)
-    if (url.username || url.password) return false
+    if (url.username || url.password || url.search || url.hash) return false
     if (url.protocol === 'https:') return true
     if (url.protocol !== 'http:') return false
     return isLoopbackHost(url.hostname)
+  } catch {
+    return false
+  }
+}
+
+export function isSafeAllowedOrigin(value: string): boolean {
+  if (value.includes('*')) return false
+  try {
+    const url = new URL(value)
+    if (url.username || url.password || url.search || url.hash) return false
+    if (url.pathname && url.pathname !== '/') return false
+    if (url.protocol === 'chrome-extension:') {
+      return /^[a-p]{32}$/.test(url.hostname) && !url.port
+    }
+    if (url.protocol === 'https:') return Boolean(url.hostname)
+    if (url.protocol === 'http:') return isLoopbackHost(url.hostname)
+    return false
   } catch {
     return false
   }
