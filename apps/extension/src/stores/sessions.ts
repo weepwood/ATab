@@ -4,7 +4,11 @@ import { browserGateway } from '@/shared/browser'
 import { db } from '@/shared/db'
 import type { SessionRecord, SessionRestoreResult } from '@/shared/domain'
 import { captureAndSaveSession, saveImportedSession } from '@/shared/sessionService'
-import { assertSessionImportTextSize, parseSessionImport } from '@/shared/sessions'
+import {
+  assertSessionImportTextSize,
+  parseSessionImport,
+  SESSION_IMPORT_MAX_BYTES,
+} from '@/shared/sessions'
 
 export const useSessionsStore = defineStore('sessions', () => {
   const sessions = ref<SessionRecord[]>([])
@@ -95,6 +99,14 @@ export const useSessionsStore = defineStore('sessions', () => {
     })
   }
 
+  async function importFile(file: File): Promise<void> {
+    if (file.size > SESSION_IMPORT_MAX_BYTES) {
+      error.value = '会话文件不能超过 2 MB'
+      throw new Error(error.value)
+    }
+    await importFromJson(await file.text())
+  }
+
   return {
     sessions,
     loading,
@@ -109,5 +121,6 @@ export const useSessionsStore = defineStore('sessions', () => {
     rename,
     remove,
     importFromJson,
+    importFile,
   }
 })
