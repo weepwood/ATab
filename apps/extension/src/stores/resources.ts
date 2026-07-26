@@ -14,6 +14,11 @@ import {
   listResourceLibraryItems,
   type ResourceLibraryItem,
 } from '@/shared/resourceIndex'
+import {
+  createAndStoreResourceEmbedding,
+  deleteResourceEmbedding,
+  isResourceEmbeddingStale,
+} from '@/shared/semanticSearch'
 
 export const useResourcesStore = defineStore('resources', () => {
   const items = ref<ResourceLibraryItem[]>([])
@@ -24,6 +29,7 @@ export const useResourcesStore = defineStore('resources', () => {
   const capturing = ref(false)
   const mutating = ref(false)
   const summarizingIds = ref<string[]>([])
+  const indexingIds = ref<string[]>([])
   const error = ref('')
   const message = ref('')
 
@@ -107,6 +113,25 @@ export const useResourcesStore = defineStore('resources', () => {
     }
   }
 
+  async function createSemanticIndex(item: ResourceLibraryItem): Promise<void> {
+    if (!indexingIds.value.includes(item.resource.id)) {
+      indexingIds.value = [...indexingIds.value, item.resource.id]
+    }
+    error.value = ''
+    message.value = ''
+    try {
+      const embedding = await createAndStoreResourceEmbedding(item)
+      await refreshItems()
+      message.value = `已使用 ${embedding.provider} / ${embedding.model} 为“${item.resource.title}”建立 ${embedding.dimensions} 维本地语义索引。`
+    } catch (cause) {
+      error.value = messageOf(cause)
+      await refreshItems()
+      throw cause
+    } finally {
+      indexingIds.value = indexingIds.value.filter((id) => id !== item.resource.id)
+    }
+  }
+
   async function removeSummary(item: ResourceLibraryItem): Promise<void> {
     mutating.value = true
     error.value = ''
@@ -115,6 +140,22 @@ export const useResourcesStore = defineStore('resources', () => {
       await deleteResourceSummary(item.resource.id)
       await refreshItems()
       message.value = `已删除“${item.resource.title}”的本地 AI 摘要，网页正文仍保留。`
+    } catch (cause) {
+      error.value = messageOf(cause)
+      throw cause
+    } finally {
+      mutating.value = false
+    }
+  }
+
+  async function removeSemanticIndex(item: ResourceLibraryItem): Promise<void> {
+    mutating.value = true
+    error.value = ''
+    message.value = ''
+    try {
+      await deleteResourceEmbedding(item.resource.id)
+      await refreshItems()
+      message.value = `已删除“${item.resource.title}”的本地语义向量，网页正文仍保留。`
     } catch (cause) {
       error.value = messageOf(cause)
       throw cause
@@ -151,6 +192,10 @@ export const useResourcesStore = defineStore('resources', () => {
     return summarizingIds.value.includes(resourceId)
   }
 
+  function isIndexing(resourceId: string): boolean {
+    return indexingIds.value.includes(resourceId)
+  }
+
   return {
     items,
     tabs,
@@ -160,6 +205,7 @@ export const useResourcesStore = defineStore('resources', () => {
     capturing,
     mutating,
     summarizingIds,
+    indexingIds,
     error,
     message,
     capturableTabs,
@@ -172,12 +218,16 @@ export const useResourcesStore = defineStore('resources', () => {
     captureSelected,
     refreshResource,
     summarize,
+    createSemanticIndex,
     removeSummary,
+    removeSemanticIndex,
     remove,
     open,
     hasOpenTab,
     isSummarizing,
+    isIndexing,
     isSummaryStale: isResourceSummaryStale,
+    isEmbeddingStale: isResourceEmbeddingStale,
   }
 })
 
