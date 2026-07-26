@@ -1,0 +1,77 @@
+name: Extension Package & Smoke
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - 'feat/**'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: extension-smoke-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  package-and-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Unit tests
+        run: pnpm test
+
+      - name: Production build
+        run: pnpm build
+
+      - name: Validate extension artifact
+        run: node scripts/validate-extension.mjs
+
+      - name: Package extension ZIP
+        run: python3 scripts/package-extension.py
+
+      - name: Install Playwright Chromium
+        run: pnpm --filter @atab/e2e exec playwright install --with-deps chromium
+
+      - name: Chromium extension smoke test
+        env:
+          ATAB_EXTENSION_DIR: ${{ github.workspace }}/apps/extension/dist
+        run: xvfb-run -a pnpm --filter @atab/e2e test
+
+      - name: Upload extension ZIP
+        uses: actions/upload-artifact@v4
+        with:
+          name: atab-extension-${{ github.sha }}
+          path: artifacts/atab-extension-*.zip
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report-${{ github.sha }}
+          path: |
+            apps/e2e/playwright-report
+            apps/e2e/test-results
+          if-no-files-found: ignore
+          retention-days: 7
