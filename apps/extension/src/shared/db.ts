@@ -21,6 +21,12 @@ class ATabDatabase extends Dexie {
       settings: 'key, updatedAt',
       actionPlans: 'id, createdAt, risk',
     })
+    this.version(2).stores({
+      resources: 'id, canonicalUrl, domain, lastSeenAt',
+      sessions: 'id, kind, updatedAt',
+      settings: 'key, updatedAt',
+      actionPlans: 'id, createdAt, risk',
+    })
   }
 }
 
