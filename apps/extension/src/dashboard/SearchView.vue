@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { nextTick, onBeforeUnmount, ref, watch } from 'vue'
+import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { getEmbeddingEndpointPreview } from '@/shared/ai/embedding'
 import { useUnifiedSearchStore } from '@/stores/unifiedSearch'
 import {
   sourceLabel,
@@ -11,6 +12,12 @@ import {
 const store = useUnifiedSearchStore()
 const input = ref<HTMLInputElement | null>(null)
 let debounceTimer: number | undefined
+
+onMounted(() => {
+  void store.loadSemanticSettings().catch((cause: unknown) => {
+    store.semanticError = cause instanceof Error ? cause.message : '读取语义搜索设置失败'
+  })
+})
 
 watch(
   () => store.query,
@@ -38,6 +45,35 @@ function scheduleSearch(): void {
 function toggleSource(source: UnifiedSearchSource): void {
   store.toggleSource(source)
   scheduleSearch()
+}
+
+async function enableSemanticSearch(): Promise<void> {
+  try {
+    const preview = await getEmbeddingEndpointPreview()
+    const confirmed = window.confirm(
+      `启用语义搜索？\n\n启用操作本身不会发送数据。此后只有你主动点击“语义查找（发送当前查询）”时，ATab 才会把当前搜索词发送到：\n${preview.endpoint}\n\n资源向量和相似度计算仍只保存在当前浏览器。`,
+    )
+    if (!confirmed) return
+    await store.enableSemanticSearch()
+  } catch (cause) {
+    store.semanticError = cause instanceof Error ? cause.message : '启用语义搜索失败'
+  }
+}
+
+async function disableSemanticSearch(): Promise<void> {
+  try {
+    await store.disableSemanticSearch()
+  } catch (cause) {
+    store.semanticError = cause instanceof Error ? cause.message : '关闭语义搜索失败'
+  }
+}
+
+async function runSemanticSearch(): Promise<void> {
+  try {
+    await store.runSemanticSearch()
+  } catch {
+    // 语义错误单独保存在 store，不清空本地关键词结果。
+  }
 }
 
 function onKeydown(event: KeyboardEvent): void {
@@ -68,7 +104,7 @@ function matchLabel(result: UnifiedSearchResult): string {
       if (field === 'title') return '标题'
       if (field === 'url') return '网址'
       if (field === 'keywords') return '标签/内容'
-      if (field === 'body') return '正文'
+      if (field === 'body') return '正文/语义'
       return '说明'
     })
     .join('、')
@@ -114,12 +150,46 @@ function sourceClass(source: UnifiedSearchSource): string {
           <span v-if="store.query">{{ store.sourceCounts[source] }}</span>
         </button>
       </div>
+
+      <div class="semantic-controls">
+        <template v-if="!store.semanticEnabled">
+          <div>
+            <strong>语义搜索默认关闭</strong>
+            <span>本地关键词搜索不会发送查询词，也不依赖 AI 服务。</span>
+          </div>
+          <button class="semantic-enable" @click="enableSemanticSearch">了解并启用</button>
+        </template>
+        <template v-else>
+          <div>
+            <strong>语义搜索已启用</strong>
+            <span>只有点击右侧按钮才会发送当前查询；仅比较已建立本地语义索引的网页资料。</span>
+          </div>
+          <div class="semantic-actions">
+            <button
+              class="semantic-run"
+              :disabled="store.semanticLoading || store.query.trim().length < 2 || !store.selectedSources.includes('resource')"
+              @click="runSemanticSearch"
+            >
+              {{ store.semanticLoading ? '语义查找中…' : '语义查找（发送当前查询）' }}
+            </button>
+            <button class="semantic-disable" :disabled="store.semanticLoading" @click="disableSemanticSearch">
+              关闭
+            </button>
+          </div>
+        </template>
+      </div>
     </section>
 
     <p class="privacy-notice">
-      搜索在扩展本地完成，不发送到 AI 或同步服务。网页正文仅检索你主动保存的本地快照；浏览历史只有在此前授权后才参与检索。
+      实时关键词搜索完全在扩展本地执行。网页正文只检索你主动保存的快照；语义搜索仅在点击按钮时发送当前查询，资源向量与相似度结果不进入同步服务。
     </p>
     <p v-if="store.error" class="error-banner">{{ store.error }}</p>
+    <p v-if="store.semanticError" class="semantic-error">
+      语义搜索：{{ store.semanticError }}。本地关键词结果仍然可用。
+    </p>
+    <p v-else-if="store.semanticMatchCount > 0" class="semantic-success">
+      已合并 {{ store.semanticMatchCount }} 条语义相似的网页资料结果。
+    </p>
 
     <section v-if="!store.query" class="empty-state surface">
       <strong>输入关键词开始检索</strong>
@@ -132,15 +202,16 @@ function sourceClass(source: UnifiedSearchSource): string {
     </section>
 
     <section v-else-if="!store.loading && store.results.length === 0" class="empty-state surface">
-      <strong>没有匹配结果</strong>
-      <p v-if="!store.historyAvailable">浏览历史未授权，因此当前只检索其他本地数据源。</p>
+      <strong>本地关键词没有匹配结果</strong>
+      <p v-if="store.semanticEnabled">仍可点击“语义查找”寻找含义接近且已建立向量索引的网页资料。</p>
+      <p v-else-if="!store.historyAvailable">浏览历史未授权，因此当前只检索其他本地数据源。</p>
       <p v-else>尝试减少关键词，或重新启用某个数据来源。</p>
     </section>
 
     <section v-else class="results surface">
       <header class="results-header">
         <span>共 {{ store.results.length }} 条结果</span>
-        <span>按本地相关度排序</span>
+        <span>{{ store.semanticMatchCount > 0 ? '关键词与语义混合排序' : '本地关键词相关度排序' }}</span>
       </header>
       <button
         v-for="(result, index) in store.results"
@@ -181,9 +252,18 @@ kbd { padding: 7px 10px; border: 1px solid var(--line); border-radius: 9px; back
 .source-filters button { border: 1px solid transparent; border-radius: 999px; padding: 7px 11px; background: transparent; color: var(--muted); }
 .source-filters button.active { border-color: var(--line); background: var(--primary-soft); color: var(--primary); }
 .source-filters span { margin-left: 5px; opacity: 0.75; }
-.privacy-notice, .error-banner { padding: 11px 13px; border-radius: 12px; }
+.semantic-controls { display: flex; justify-content: space-between; gap: 16px; align-items: center; padding: 13px 16px; border-top: 1px solid var(--line); background: rgba(37, 99, 235, 0.05); }
+.semantic-controls > div:first-child { display: grid; gap: 3px; }
+.semantic-controls span { color: var(--muted); font-size: 12px; line-height: 1.5; }
+.semantic-actions { display: flex; gap: 8px; flex-shrink: 0; }
+.semantic-enable, .semantic-run, .semantic-disable { border-radius: 10px; padding: 8px 11px; }
+.semantic-enable, .semantic-run { border: 0; background: #2563eb; color: white; }
+.semantic-disable { border: 1px solid var(--line); background: transparent; color: var(--muted); }
+.semantic-run:disabled, .semantic-disable:disabled { cursor: not-allowed; opacity: 0.5; }
+.privacy-notice, .error-banner, .semantic-error, .semantic-success { padding: 11px 13px; border-radius: 12px; }
 .privacy-notice { color: var(--muted); background: var(--primary-soft); }
-.error-banner { color: var(--danger); background: rgba(217, 45, 32, 0.1); }
+.error-banner, .semantic-error { color: var(--danger); background: rgba(217, 45, 32, 0.1); }
+.semantic-success { color: #2563eb; background: rgba(37, 99, 235, 0.08); }
 .empty-state { margin-top: 18px; padding: 70px 24px; text-align: center; color: var(--muted); }
 .empty-state strong { color: var(--text); font-size: 18px; }
 .hints { display: flex; justify-content: center; flex-wrap: wrap; gap: 8px; margin-top: 18px; }
@@ -208,6 +288,8 @@ kbd { padding: 7px 10px; border: 1px solid var(--line); border-radius: 9px; back
 @media (max-width: 760px) {
   .view-content { padding: 18px; }
   .page-header kbd { display: none; }
+  .semantic-controls { display: grid; }
+  .semantic-actions { display: grid; grid-template-columns: minmax(0, 1fr) auto; }
   .result-row { grid-template-columns: 78px minmax(0, 1fr) auto; }
   .match-info { display: none; }
 }
