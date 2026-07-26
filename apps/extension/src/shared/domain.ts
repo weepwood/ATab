@@ -52,6 +52,15 @@ export interface CloudBookmarkImportCandidate {
   duplicate: boolean
 }
 
+export interface HistoryEntry {
+  id: string
+  title: string
+  url: string
+  lastVisitTime: number
+  visitCount: number
+  typedCount: number
+}
+
 export type TabGroupColor = SharedTabGroupColor
 
 export interface SessionGroupSnapshot {
