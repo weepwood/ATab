@@ -1,6 +1,6 @@
 # 扩展发布包与 Chromium 烟雾测试
 
-ATab 的发布流程将“代码可以构建”与“扩展产物可以加载”分开验证。每个 PR 除原有类型检查、单元测试和生产构建外，还会校验最终 `dist`、生成 ZIP，并在真实 Chromium 持久上下文中加载扩展执行核心页面烟雾测试。
+ATab 的发布流程将“代码可以构建”与“扩展产物可以加载”分开验证。每个 PR 除原有类型检查、单元测试和生产构建外，还会校验最终 `dist`、生成 ZIP 与 SHA-256 校验文件，并在真实 Chromium 持久上下文中加载扩展执行核心页面烟雾测试。
 
 ## PR 工作流
 
@@ -16,14 +16,14 @@ ATab 的发布流程将“代码可以构建”与“扩展产物可以加载”
 4. 单元测试；
 5. 扩展、API 和共享协议生产构建；
 6. 校验扩展 Manifest 与构建产物；
-7. 生成可复现扩展 ZIP；
-8. 安装 Playwright Chromium；
-9. 在 Xvfb 中加载 MV3 扩展；
-10. 执行新标签页、工作台、网页资料、统一搜索、设置和 IndexedDB 烟雾测试；
-11. 上传扩展 ZIP；
+7. 生成可复现扩展 ZIP 和 SHA-256 校验文件；
+8. 上传扩展包工件；
+9. 安装 Playwright Chromium；
+10. 在 Xvfb 中加载 MV3 扩展；
+11. 执行新标签页、工作台、网页资料、统一搜索、设置和 IndexedDB 烟雾测试；
 12. 测试失败时上传 Playwright trace、截图和 HTML 报告。
 
-PR 产物保留 14 天，失败报告保留 7 天。
+PR 扩展包工件保留 14 天，失败报告保留 7 天。扩展包在产物校验和打包成功后上传，因此即使后续 Chromium 测试失败，也可以下载对应 ZIP 与校验文件进行诊断；失败的烟雾测试不代表该产物可以发布。
 
 ## 构建产物校验
 
@@ -35,11 +35,15 @@ node scripts/validate-extension.mjs
 
 - `manifest_version` 必须为 3；
 - 扩展名称和数字版本有效；
-- 标签页、标签组、书签、会话、存储与脚本权限存在；
+- `minimum_chrome_version` 不得高于项目兼容目标 Chrome 109；
+- 标签页、标签组、书签、会话、存储、脚本与定时任务权限存在；
 - 浏览历史保持可选权限；
 - HTTP/HTTPS 网站访问保持可选主机权限；
 - 安装时不得申请 `<all_urls>` 或全部 HTTP/HTTPS 网站；
-- 新标签页、设置、工作台和后台入口文件真实存在；
+- 后台 Service Worker 使用 module 类型；
+- 自定义扩展 CSP 不得允许远程脚本、`unsafe-eval` 或 `data:` 脚本；
+- 新标签页、设置、工作台和后台入口路径安全且文件真实存在；
+- 最终 `dist` 不得包含符号链接；
 - 扫描构建后的 JS、HTML、JSON 和 CSS。
 
 敏感信息扫描包括：
@@ -65,6 +69,7 @@ python3 scripts/package-extension.py
 
 ```text
 artifacts/atab-extension-<manifest-version>.zip
+artifacts/atab-extension-<manifest-version>.zip.sha256
 ```
 
 归档规则：
@@ -72,16 +77,31 @@ artifacts/atab-extension-<manifest-version>.zip
 - `manifest.json` 位于 ZIP 根目录；
 - 文件按路径排序；
 - 使用固定时间戳和普通文件权限；
-- 拒绝绝对路径和 `..` 路径；
-- 压缩完成后重新读取 ZIP 验证结构。
+- 拒绝符号链接、绝对路径、`..` 路径和重复归档路径；
+- 产物输出目录不得位于扩展 `dist` 内部；
+- 压缩完成后重新读取 ZIP 验证结构；
+- 对最终 ZIP 计算 SHA-256，并生成标准校验文件。
+
+校验下载文件：
+
+```bash
+sha256sum -c atab-extension-0.1.0.zip.sha256
+```
+
+macOS 可以使用：
+
+```bash
+shasum -a 256 -c atab-extension-0.1.0.zip.sha256
+```
 
 本地安装：
 
-1. 解压 ZIP；
-2. 打开 Chrome/Edge 扩展管理页；
-3. 启用开发者模式；
-4. 选择“加载已解压的扩展”；
-5. 选择解压目录，而不是 ZIP 文件本身。
+1. 校验 ZIP 的 SHA-256；
+2. 解压 ZIP；
+3. 打开 Chrome/Edge 扩展管理页；
+4. 启用开发者模式；
+5. 选择“加载已解压的扩展”；
+6. 选择解压目录，而不是 ZIP 文件本身。
 
 ## Chromium 烟雾测试
 
@@ -94,9 +114,9 @@ apps/e2e/tests/extension.smoke.spec.ts
 当前验证：
 
 - Manifest 新标签页入口可以打开；
-- 新标签页显示 ATab；
+- 新标签页搜索框和工作台入口可见；
 - 工作台可以打开；
-- 标签页、搜索和网页资料导航存在；
+- 标签页、搜索和资料导航存在；
 - 网页资料页面可以初始化；
 - IndexedDB 中建立 `atab` 数据库；
 - 统一搜索页面可以打开；
@@ -116,12 +136,12 @@ apps/e2e/tests/extension.smoke.spec.ts
 推送 `v*` 标签后：
 
 1. 重新运行类型检查、测试、构建、产物校验和 Chromium 烟雾测试；
-2. `scripts/verify-release-tag.mjs` 检查标签与 Manifest 版本一致；
-3. 生成扩展 ZIP；
-4. 使用 GitHub CLI 创建 Release；
-5. 上传 ZIP 并自动生成发行说明。
+2. `scripts/verify-release-tag.mjs` 检查根 `package.json`、扩展 `package.json`、构建 Manifest 与标签版本一致；
+3. 生成扩展 ZIP 与 SHA-256 校验文件；
+4. 不存在同名 Release 时创建 Release 并生成发行说明；
+5. 已存在同名 Release 时覆盖上传 ZIP 与校验文件，使失败后的工作流可以安全重跑。
 
-例如 Manifest 为：
+例如项目版本为：
 
 ```json
 { "version": "0.1.0" }
@@ -133,16 +153,17 @@ apps/e2e/tests/extension.smoke.spec.ts
 v0.1.0
 ```
 
-标签与 Manifest 不一致时，发布会在创建 Release 前失败。
+任一版本来源与标签不一致时，发布会在创建或更新 Release 前失败。
 
 ## 安全边界
 
-- Release 工作流只使用 GitHub 自动令牌创建发行版；
+- Release 工作流只使用 GitHub 自动令牌创建或更新发行版；
 - 不向扩展构建注入模型密钥、Supabase service-role 或用户凭据；
 - Playwright 使用临时浏览器配置目录；
 - 失败报告可能包含测试页面截图，因此只测试无真实用户数据的临时环境；
 - ZIP 是开发者加载包，不是 Chrome Web Store 签名 CRX；
-- GitHub Release 不等于浏览器商店审核通过。
+- GitHub Release 不等于浏览器商店审核通过；
+- SHA-256 用于完整性校验，不等同于代码签名或发布者身份认证。
 
 ## 仍需人工验收
 
@@ -170,7 +191,9 @@ pnpm typecheck
 pnpm test
 pnpm build
 node scripts/validate-extension.mjs
+node scripts/verify-release-tag.mjs v0.1.0
 python3 scripts/package-extension.py
+sha256sum -c artifacts/atab-extension-0.1.0.zip.sha256
 pnpm --filter @atab/e2e exec playwright install chromium
 ATAB_EXTENSION_DIR="$PWD/apps/extension/dist" \
   pnpm --filter @atab/e2e smoke
